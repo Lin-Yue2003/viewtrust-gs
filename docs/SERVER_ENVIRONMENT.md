@@ -61,6 +61,17 @@ torch.cuda.is_available(): True
 gsplat import: ok
 ```
 
+The activation script also attempts to resolve PyTorch's shared library
+directory and prepend it to `LD_LIBRARY_PATH`:
+
+```text
+$CONDA_PREFIX/lib/python*/site-packages/torch/lib
+```
+
+This is required for the official Gaussian Splatting CUDA submodules on the
+validated server. If the activation script warns that it cannot resolve
+`TORCH_LIB_DIR`, fix that before running the official trainer.
+
 ## Full Server Validation Flow
 
 Run this exact flow from the repository root on the server:
@@ -85,3 +96,46 @@ bash scripts/checks/run_server_checks.sh
 ```
 
 This is SERVER-REQUIRED and is not expected to pass on the local Mac.
+
+## Official Gaussian Splatting Trainer Checks
+
+The ViewTrust-GS repository does not vendor the official trainer. If the trainer
+is present under `third_party/gaussian-splatting`, validate its CUDA submodule
+imports on the server with:
+
+```bash
+bash scripts/env/check_server_environment.sh --require-gaussian-splatting
+```
+
+This additional check requires:
+
+```text
+third_party/gaussian-splatting/train.py
+diff-gaussian-rasterization
+simple-knn
+fused-ssim
+PyTorch shared library directory in LD_LIBRARY_PATH
+```
+
+Validated server install commands:
+
+```bash
+python -m pip install "setuptools<82" wheel ninja
+python -m pip install plyfile tqdm opencv-python joblib
+python -m pip install --no-build-isolation -e third_party/gaussian-splatting/submodules/diff-gaussian-rasterization
+python -m pip install --no-build-isolation -e third_party/gaussian-splatting/submodules/simple-knn
+python -m pip install --no-build-isolation -e third_party/gaussian-splatting/submodules/fused-ssim
+```
+
+Do not upgrade to `setuptools` 83+ in the validated `torch 2.12.1+cu126`
+environment unless the CUDA extension builds are revalidated.
+
+Known server-local compatibility patch for the official trainer:
+
+```text
+third_party/gaussian-splatting/scene/dataset_readers.py
+np.byte -> np.uint8
+```
+
+This patch is documented server-local state. Do not commit third-party source
+changes to ViewTrust-GS.

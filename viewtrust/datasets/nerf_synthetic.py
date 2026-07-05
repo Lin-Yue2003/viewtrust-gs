@@ -27,6 +27,10 @@ class PreparedFrame:
     output_image_path: Path
     resized: bool
 
+    @property
+    def output_transform_file_path(self) -> str:
+        return Path(self.output_file_path).with_suffix("").as_posix()
+
     def as_manifest_entry(self, raw_scene_root: Path) -> dict[str, object]:
         try:
             source_image_relative_path = self.source_image_path.relative_to(
@@ -40,7 +44,8 @@ class PreparedFrame:
             "split": self.split,
             "source_file_path": self.source_file_path,
             "source_image_relative_path": source_image_relative_path,
-            "output_file_path": self.output_file_path,
+            "output_file_path": self.output_transform_file_path,
+            "output_image_relative_path": self.output_file_path,
             "resized": self.resized,
         }
 
@@ -242,7 +247,7 @@ def _rewrite_transforms(
     frames: list[dict[str, Any]] = []
     for prepared in selected:
         frame = dict(original_frames[prepared.index])
-        frame["file_path"] = Path(prepared.output_file_path).as_posix()
+        frame["file_path"] = prepared.output_transform_file_path
         frames.append(frame)
     rewritten["frames"] = frames
     return rewritten

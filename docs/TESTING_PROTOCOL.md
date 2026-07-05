@@ -85,6 +85,7 @@ preparing real NeRF Synthetic chair subset from raw data
 future training on prepared chair subset
 real clean chair baseline training
 observed GPU memory sampling during training
+official Gaussian Splatting CUDA submodule import validation
 ```
 
 Command:
@@ -94,6 +95,21 @@ bash scripts/checks/run_server_checks.sh
 ```
 
 This command is not expected to pass on the local Mac.
+
+When the official trainer is present under `third_party/gaussian-splatting`,
+run the extended server environment check:
+
+```bash
+bash scripts/env/check_server_environment.sh --require-gaussian-splatting
+```
+
+After a clean chair baseline run, inspect the observed artifacts with:
+
+```bash
+python scripts/measure/inspect_baseline_run.py \
+  --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
+  --require-success
+```
 
 Recommended server validation flow:
 

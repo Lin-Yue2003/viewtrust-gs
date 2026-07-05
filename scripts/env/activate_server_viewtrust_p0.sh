@@ -7,6 +7,29 @@ _viewtrust_return() {
   return "$1" 2>/dev/null || exit "$1"
 }
 
+_viewtrust_prepend_path_var() {
+  local var_name="$1"
+  local path_value="$2"
+  local current_value="${!var_name:-}"
+
+  if [ -z "${path_value}" ]; then
+    return 0
+  fi
+
+  case ":${current_value}:" in
+    *":${path_value}:"*)
+      export "${var_name}=${current_value}"
+      ;;
+    *)
+      if [ -n "${current_value}" ]; then
+        export "${var_name}=${path_value}:${current_value}"
+      else
+        export "${var_name}=${path_value}"
+      fi
+      ;;
+  esac
+}
+
 export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/trainingData/sage/yue/.mamba-root}"
 export VIEWTRUST_ENV_PREFIX="/trainingData/sage/yue/envs/viewtrust-p0"
 
@@ -41,6 +64,29 @@ export CPATH="${CUDA_HOME}/targets/x86_64-linux/include:${CUDA_HOME}/include:${C
 export LIBRARY_PATH="${CUDA_HOME}/targets/x86_64-linux/lib:${CUDA_HOME}/lib:${CUDA_HOME}/lib64:${LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH="${CUDA_HOME}/targets/x86_64-linux/lib:${CUDA_HOME}/lib:${CUDA_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
+_VIEWTRUST_PYTHON="${CONDA_PREFIX:-${VIEWTRUST_ENV_PREFIX}}/bin/python"
+if [ -x "${_VIEWTRUST_PYTHON}" ]; then
+  _VIEWTRUST_TORCH_LIB_DIR="$("${_VIEWTRUST_PYTHON}" - <<'PY' 2>/dev/null || true
+from pathlib import Path
+
+try:
+    import torch
+except Exception:
+    raise SystemExit(1)
+
+print(Path(torch.__file__).resolve().parent / "lib")
+PY
+)"
+  if [ -n "${_VIEWTRUST_TORCH_LIB_DIR}" ] && [ -d "${_VIEWTRUST_TORCH_LIB_DIR}" ]; then
+    export TORCH_LIB_DIR="${_VIEWTRUST_TORCH_LIB_DIR}"
+    _viewtrust_prepend_path_var LD_LIBRARY_PATH "${TORCH_LIB_DIR}"
+  else
+    echo "WARNING: could not resolve torch shared library directory; Gaussian Splatting submodules may fail to import." >&2
+  fi
+else
+  echo "WARNING: expected environment python is not executable: ${_VIEWTRUST_PYTHON}" >&2
+fi
+
 export VIEWTRUST_DATA_ROOT="${VIEWTRUST_DATA_ROOT:-./data}"
 export VIEWTRUST_OUTPUT_ROOT="${VIEWTRUST_OUTPUT_ROOT:-./outputs}"
 export VIEWTRUST_THIRD_PARTY_ROOT="${VIEWTRUST_THIRD_PARTY_ROOT:-./third_party}"
@@ -51,6 +97,7 @@ echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
 echo "VIEWTRUST_PROJECT_ROOT=${VIEWTRUST_PROJECT_ROOT}"
 echo "CUDA_HOME=${CUDA_HOME}"
 echo "CUDA_PATH=${CUDA_PATH}"
+echo "TORCH_LIB_DIR=${TORCH_LIB_DIR:-}"
 echo "which python: $(command -v python || true)"
 python --version || true
 echo "which pip: $(command -v pip || true)"

@@ -219,3 +219,9 @@ still observation preparation only and does not modify training behavior.
 PR3 creates a clean chair baseline training wrapper. It uses the observed
 command infrastructure to run an external trainer and does not modify training
 internals.
+
+PR3 server validation completed for the clean chair mini subset with the
+official Gaussian Splatting trainer at 500 iterations. Follow-up cleanup keeps
+the work observation-only: document server-local trainer dependencies, validate
+trainer CUDA submodule imports when requested, inspect observed baseline
+artifacts, and keep prepared transforms compatible with the official reader.

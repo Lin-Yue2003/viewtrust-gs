@@ -182,7 +182,23 @@ PY
 ```
 
 The prepared transform `file_path` entries should be relative paths under
-`images/`.
+`images/`. For compatibility with the official Gaussian Splatting NeRF
+Synthetic reader, these transform paths are extensionless:
+
+```json
+{
+  "file_path": "images/train_000"
+}
+```
+
+The actual image file remains:
+
+```text
+images/train_000.png
+```
+
+`manifest.json` records the image-bearing path as
+`output_image_relative_path`.
 
 `manifest.json` records dataset roots relative to `VIEWTRUST_DATA_ROOT`; it
 should not contain machine-specific absolute paths.

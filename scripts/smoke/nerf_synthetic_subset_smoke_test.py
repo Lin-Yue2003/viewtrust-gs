@@ -142,6 +142,18 @@ def main() -> int:
             raise ValueError("manifest image_count mismatch")
         if "source_image_path" in json.dumps(manifest):
             raise ValueError("manifest contains absolute source_image_path field")
+        for manifest_key in (
+            "selected_train_frames",
+            "selected_test_frames",
+            "selected_target_frames",
+        ):
+            for selected_frame in manifest[manifest_key]:
+                output_file_path = selected_frame["output_file_path"]
+                output_image_relative_path = selected_frame["output_image_relative_path"]
+                if output_file_path.endswith(".png"):
+                    raise ValueError("manifest transform output_file_path should be extensionless")
+                if not output_image_relative_path.endswith(".png"):
+                    raise ValueError("manifest output_image_relative_path should include .png")
         if manifest["raw_scene_root"]["path"] != "raw/nerf_synthetic/chair":
             raise ValueError("manifest raw_scene_root is not data-root-relative")
         if manifest["output_scene_root"]["path"] != "viewtrust-mini/nerf_synthetic/chair/clean":
@@ -162,6 +174,13 @@ def main() -> int:
                     raise ValueError(f"{transform_name} contains absolute file_path")
                 if not str(file_path).startswith("images/"):
                     raise ValueError(f"{transform_name} file_path is not under images/")
+                if str(file_path).endswith(".png"):
+                    raise ValueError(f"{transform_name} file_path should be extensionless")
+                resolved_image = clean_root / f"{frame['file_path']}.png"
+                if not resolved_image.exists():
+                    raise FileNotFoundError(
+                        f"{transform_name} file_path does not map to an image: {resolved_image}"
+                    )
             if _contains_absolute_server_path(transform_path):
                 raise ValueError(f"{transform_name} contains forbidden absolute path")
 

@@ -6,12 +6,37 @@ fail() {
   exit 1
 }
 
+REQUIRE_GAUSSIAN_SPLATTING=0
+for arg in "$@"; do
+  case "${arg}" in
+    --require-gaussian-splatting)
+      REQUIRE_GAUSSIAN_SPLATTING=1
+      ;;
+    *)
+      fail "unknown argument: ${arg}"
+      ;;
+  esac
+done
+
+path_contains() {
+  local needle="$1"
+  local haystack="$2"
+  case ":${haystack}:" in
+    *":${needle}:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 echo "ViewTrust-GS server environment check"
 echo "CONDA_PREFIX=${CONDA_PREFIX:-}"
 echo "VIRTUAL_ENV=${VIRTUAL_ENV:-}"
 echo "CUDA_HOME=${CUDA_HOME:-}"
 echo "CUDA_PATH=${CUDA_PATH:-}"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
 echo "PATH=${PATH}"
+echo "REQUIRE_GAUSSIAN_SPLATTING=${REQUIRE_GAUSSIAN_SPLATTING}"
 
 [ -n "${CUDA_HOME:-}" ] || fail "CUDA_HOME is missing. Source scripts/env/activate_server_viewtrust_p0.sh first."
 
@@ -90,5 +115,50 @@ import gsplat
 
 print(f"gsplat import ok: {getattr(gsplat, '__file__', '<unknown>')}")
 PY
+
+if [ "${REQUIRE_GAUSSIAN_SPLATTING}" -eq 1 ]; then
+  THIRD_PARTY_ROOT="${VIEWTRUST_THIRD_PARTY_ROOT:-${PROJECT_ROOT}/third_party}"
+  TRAINER_PATH="${THIRD_PARTY_ROOT}/gaussian-splatting/train.py"
+  echo "Gaussian Splatting trainer path: ${TRAINER_PATH}"
+
+  [ -f "${TRAINER_PATH}" ] || fail "third_party/gaussian-splatting/train.py was not found."
+
+  TORCH_LIB_DIR="$(
+    python - <<'PY'
+from pathlib import Path
+
+try:
+    import torch
+except Exception as exc:
+    raise SystemExit(f"torch import failed while resolving torch lib dir: {exc}")
+
+print(Path(torch.__file__).resolve().parent / "lib")
+PY
+  )"
+  echo "torch shared library dir: ${TORCH_LIB_DIR}"
+  [ -d "${TORCH_LIB_DIR}" ] || fail "torch shared library directory does not exist: ${TORCH_LIB_DIR}"
+
+  if ! path_contains "${TORCH_LIB_DIR}" "${LD_LIBRARY_PATH:-}"; then
+    fail "torch shared library directory is not in LD_LIBRARY_PATH. Source scripts/env/activate_server_viewtrust_p0.sh again."
+  fi
+
+  python - <<'PY'
+try:
+    from diff_gaussian_rasterization import (
+        GaussianRasterizationSettings,
+        GaussianRasterizer,
+    )
+    from simple_knn._C import distCUDA2
+    import fused_ssim
+except Exception as exc:
+    raise SystemExit(f"official Gaussian Splatting CUDA submodule import failed: {exc}")
+
+print("official Gaussian Splatting CUDA submodule imports ok")
+print(f"GaussianRasterizationSettings={GaussianRasterizationSettings}")
+print(f"GaussianRasterizer={GaussianRasterizer}")
+print(f"distCUDA2={distCUDA2}")
+print(f"fused_ssim={getattr(fused_ssim, '__file__', '<unknown>')}")
+PY
+fi
 
 echo "server environment check ok"
