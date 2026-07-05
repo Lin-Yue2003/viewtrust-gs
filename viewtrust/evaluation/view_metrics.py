@@ -64,6 +64,7 @@ class ViewMetricsConfig:
     condition: str = "clean"
     iteration: int = 500
     require_renders: bool = False
+    splits: tuple[str, ...] = ("train", "test", "target")
 
 
 def _split_roots(run_dir: Path, iteration: int) -> list[tuple[str, Path]]:
@@ -232,6 +233,62 @@ def _mean(values: list[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _load_render_summary(run_dir: Path) -> dict[str, Any]:
+    for path in (
+        run_dir / "view_evaluation" / "view_render_summary.json",
+        run_dir / "view_render_summary.json",
+    ):
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return {}
+
+
+def expected_view_counts_from_render_summary(run_dir: Path) -> dict[str, int]:
+    summary = _load_render_summary(run_dir)
+    counts = summary.get("preflight", {}).get("expected_view_count_by_split", {})
+    if not isinstance(counts, dict):
+        return {}
+    result: dict[str, int] = {}
+    for split, count in counts.items():
+        try:
+            result[str(split)] = int(count)
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def validate_requested_split_counts(
+    *,
+    requested_splits: tuple[str, ...],
+    pair_count_by_split: dict[str, int],
+    expected_count_by_split: dict[str, int],
+    require_renders: bool,
+) -> list[str]:
+    warnings: list[str] = []
+    for split in requested_splits:
+        observed = pair_count_by_split.get(split, 0)
+        if observed == 0:
+            message = (
+                f"requested split {split} has zero render/gt pairs. "
+                "This usually means official render.py was called without --eval."
+            )
+            if require_renders:
+                raise ValueError(message)
+            warnings.append(message)
+
+        expected = expected_count_by_split.get(split)
+        if expected is not None and observed != expected:
+            message = (
+                f"requested split {split} render/gt pair count mismatch: "
+                f"expected {expected}, observed {observed}. "
+                "For Blender datasets, confirm official render.py was called with --eval."
+            )
+            if require_renders:
+                raise ValueError(message)
+            warnings.append(message)
+    return warnings
+
+
 def summarize_view_metrics(
     run_dir: Path,
     rows: list[dict[str, Any]],
@@ -239,9 +296,15 @@ def summarize_view_metrics(
     scene: str,
     condition: str,
     iteration: int,
+    requested_splits: tuple[str, ...],
+    expected_count_by_split: dict[str, int],
+    validation_warnings: list[str],
 ) -> dict[str, Any]:
     run_id = run_dir.name
-    warnings = sorted({str(row["warning"]) for row in rows if row.get("warning")})
+    warnings = sorted(
+        {str(row["warning"]) for row in rows if row.get("warning")}
+        | set(validation_warnings)
+    )
     missing_fields: list[str] = []
     view_count_by_split = {
         split: sum(1 for row in rows if row.get("split") == split and row.get("status") == "ok")
@@ -273,6 +336,8 @@ def summarize_view_metrics(
         "condition": condition,
         "iteration": iteration,
         "observation_only": True,
+        "requested_splits": list(requested_splits),
+        "expected_view_count_by_split": expected_count_by_split,
         "rendered_splits": [
             split for split, count in view_count_by_split.items() if count > 0
         ],
@@ -295,6 +360,18 @@ def extract_view_metrics(config: ViewMetricsConfig) -> dict[str, Any]:
     if not run_dir.is_dir():
         raise FileNotFoundError(f"run_dir does not exist: {run_dir}")
     pairs = discover_render_pairs(run_dir, config.iteration)
+    requested_splits = tuple(dict.fromkeys(config.splits))
+    pair_count_by_split = {
+        split: sum(1 for pair in pairs if pair["split"] == split)
+        for split in ("train", "test", "target")
+    }
+    expected_count_by_split = expected_view_counts_from_render_summary(run_dir)
+    validation_warnings = validate_requested_split_counts(
+        requested_splits=requested_splits,
+        pair_count_by_split=pair_count_by_split,
+        expected_count_by_split=expected_count_by_split,
+        require_renders=config.require_renders,
+    )
     if config.require_renders and not pairs:
         raise FileNotFoundError(f"no rendered image pairs found for iteration {config.iteration}")
 
@@ -364,4 +441,7 @@ def extract_view_metrics(config: ViewMetricsConfig) -> dict[str, Any]:
         scene=config.scene,
         condition=config.condition,
         iteration=config.iteration,
+        requested_splits=requested_splits,
+        expected_count_by_split=expected_count_by_split,
+        validation_warnings=validation_warnings,
     )

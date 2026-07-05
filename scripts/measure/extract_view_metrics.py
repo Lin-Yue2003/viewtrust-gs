@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scene", default="chair")
     parser.add_argument("--condition", default="clean")
     parser.add_argument("--iteration", type=int, default=500)
+    parser.add_argument("--splits", nargs="+", default=["train", "test", "target"])
     parser.add_argument("--require-renders", action="store_true")
     parser.add_argument("--output-json", type=Path)
     return parser.parse_args()
@@ -41,6 +42,7 @@ def main() -> int:
                 condition=args.condition,
                 iteration=args.iteration,
                 require_renders=args.require_renders,
+                splits=tuple(args.splits),
             )
         )
     except Exception as exc:

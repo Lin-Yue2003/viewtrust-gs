@@ -45,8 +45,14 @@ PR6 calls the official Gaussian Splatting `render.py` from outside the trainer:
 python third_party/gaussian-splatting/render.py \
   -s <prepared_scene_root> \
   -m <evaluation_model_dir> \
-  --iteration 500
+  --iteration 500 \
+  --eval
 ```
+
+`--eval` is required for Blender datasets. Without it, official Gaussian
+Splatting merges test cameras into train and clears the test camera list. On
+the mini chair subset this produces the incorrect state `train=25, test=0`
+instead of `train=20, test=5`.
 
 The evaluation model directories live under:
 
@@ -70,6 +76,9 @@ views by creating:
 In that derived scene, `transforms_test.json` is copied from the prepared
 scene's `transforms_target.json`. The original prepared dataset is not
 modified.
+
+Target rendering also requires `--eval`; otherwise the target-as-test cameras
+are cleared when official `render.py` runs with `--skip_train`.
 
 ## Metrics
 

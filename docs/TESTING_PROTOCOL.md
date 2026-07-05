@@ -153,6 +153,12 @@ python scripts/measure/extract_view_metrics.py \
   --require-renders
 ```
 
+The PR6 render wrapper must pass `--eval` to official Gaussian Splatting
+`render.py`. For Blender datasets, omitting `--eval` merges test cameras into
+train and causes the mini chair split counts to become `train=25, test=0`
+instead of `train=20, test=5`. Target-as-test rendering also depends on
+`--eval`.
+
 Recommended server validation flow:
 
 ```bash

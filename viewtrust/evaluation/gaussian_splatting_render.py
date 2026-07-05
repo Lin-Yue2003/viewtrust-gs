@@ -61,6 +61,27 @@ def _validate_splits(splits: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(splits))
 
 
+def _transform_frame_count(path: Path) -> int:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    frames = data.get("frames", [])
+    if not isinstance(frames, list):
+        raise ValueError(f"{path} does not contain a frames list")
+    return len(frames)
+
+
+def expected_view_counts(prepared_scene_root: Path) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for split, name in (
+        ("train", "transforms_train.json"),
+        ("test", "transforms_test.json"),
+        ("target", "transforms_target.json"),
+    ):
+        path = prepared_scene_root / name
+        if path.is_file():
+            counts[split] = _transform_frame_count(path)
+    return counts
+
+
 def validate_render_preflight(config: ViewRenderConfig) -> dict[str, Any]:
     run_dir = config.run_dir.resolve()
     if not run_dir.exists():
@@ -125,6 +146,7 @@ def validate_render_preflight(config: ViewRenderConfig) -> dict[str, Any]:
         "point_cloud_path": str(point_cloud_path),
         "render_script": str(render_script),
         "splits": list(splits),
+        "expected_view_count_by_split": expected_view_counts(prepared_scene_root),
     }
 
 
@@ -211,6 +233,7 @@ def build_render_command(
         str(model_path),
         "--iteration",
         str(iteration),
+        "--eval",
     ]
     if split_mode == "train_only":
         command.append("--skip_test")

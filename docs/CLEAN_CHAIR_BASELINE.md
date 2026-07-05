@@ -255,6 +255,12 @@ PR6 writes `view_metrics_summary.json`, `tables/view_metrics.csv`, and
 `tables/view_render_artifacts.csv`. It does not rerun training or edit
 `trainer_output/`.
 
+For Blender datasets, official Gaussian Splatting rendering must use `--eval`
+to preserve test cameras. Without `--eval`, test cameras are merged into train,
+which produces the incorrect mini chair counts `train=25, test=0`. Target
+evaluation also requires `--eval` because PR6 renders target through a
+`target_as_test` scene.
+
 ## Missing Dependency Errors
 
 If the wrapper reports that `third_party/gaussian-splatting/train.py` is

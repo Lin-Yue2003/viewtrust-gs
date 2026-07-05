@@ -99,9 +99,18 @@ def main() -> int:
         command_names = {command["name"] for command in summary["commands"]}
         if command_names != {"train_test", "target"}:
             raise ValueError(f"unexpected render command plan: {command_names}")
+        train_test_command = next(
+            command for command in summary["commands"] if command["name"] == "train_test"
+        )
+        if "--eval" not in train_test_command["command"]:
+            raise ValueError("train/test render command is missing --eval")
         target_command = next(command for command in summary["commands"] if command["name"] == "target")
         if "target_as_test" not in target_command["source_path"]:
             raise ValueError("target eval scene was not planned")
+        if "--eval" not in target_command["command"]:
+            raise ValueError("target render command is missing --eval")
+        if "--skip_train" not in target_command["command"]:
+            raise ValueError("target render command is missing --skip_train")
         if (run_dir / "view_evaluation" / "render_models").exists():
             raise ValueError("dry-run should not create render model directories")
 

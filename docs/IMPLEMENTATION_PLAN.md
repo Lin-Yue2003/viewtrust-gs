@@ -240,3 +240,8 @@ PR6 View-level Clean Metrics renders train, test, and target views from a
 successful clean baseline model and writes post-hoc per-view metric tables. PR6
 does not include trust scores, natural corruption or poison conditions,
 Gaussian lifecycle tracking, or densification event attribution.
+
+PR6.1 fixes official Gaussian Splatting Blender rendering by requiring `--eval`
+for train/test and target-as-test render commands. It also validates requested
+split counts so the known bad state `train=25, test=0, target=0` cannot pass as
+a successful clean mini chair evaluation.
