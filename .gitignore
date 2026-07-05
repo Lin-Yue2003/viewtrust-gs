@@ -1,0 +1,16 @@
+# Local environment files
+.env
+
+# Runtime outputs and generated logs
+outputs/*
+!outputs/.gitkeep
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# CUDA and build caches
+.cache/
+build/
+dist/
+*.egg-info/

@@ -1,0 +1,22 @@
+project:
+  name: viewtrust-gs
+  stage: priority_0_observation
+
+paths:
+  data_root: /trainingData/sage/yue/datasets
+  output_root: /trainingData/sage/yue/viewtrust_outputs
+  third_party_root: /trainingData/sage/yue/viewtrust-gs/third_party
+
+logging:
+  save_metadata: true
+  save_config_snapshot: true
+  format: json
+
+runtime:
+  require_cuda: true
+  seed: 0
+  profile: server_cuda
+
+environment:
+  project_root: /trainingData/sage/yue/viewtrust-gs
+  cuda_home: /trainingData/sage/yue/envs/viewtrust-p0

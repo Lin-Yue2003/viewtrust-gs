@@ -1,0 +1,17 @@
+project:
+  name: viewtrust-gs
+  stage: priority_0_observation
+
+paths:
+  data_root: ./data
+  output_root: ./outputs
+  third_party_root: ./third_party
+
+logging:
+  save_metadata: true
+  save_config_snapshot: true
+  format: json
+
+runtime:
+  require_cuda: false
+  seed: 0
