@@ -1,18 +1,44 @@
-# Local environment files
+# Local envs and package managers
 .env
+.venv/
+.venv-*/
+envs/
+.mamba-root/
+.micromamba/
+tools/micromamba/
 
-# Runtime outputs and generated logs
+# Runtime outputs and data
 outputs/*
 !outputs/.gitkeep
 data/*
 !data/.gitkeep
+datasets/
 
-# Python cache files
+# Third party source trees should not be accidentally vendored
+third_party/*
+!third_party/.gitkeep
+
+# Python cache
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# CUDA and build caches
+# CUDA/build/cache
 .cache/
 build/
 dist/
 *.egg-info/
+*.so
+*.o
+*.a
+*.log
+
+# Model/checkpoint/output artifacts
+*.pt
+*.pth
+*.ckpt
+*.ply
+*.npz
+*.npy

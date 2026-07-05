@@ -15,6 +15,14 @@ CUDA_HOME on server: /trainingData/sage/yue/envs/viewtrust-p0
 gsplat CUDA smoke test: passed
 ```
 
+CUDA headers are expected in the micromamba environment. The server setup may
+need both include roots:
+
+```text
+$CUDA_HOME/targets/x86_64-linux/include
+$CUDA_HOME/include
+```
+
 ## Important CUDA Note
 
 Do not use system CUDA at:
@@ -24,6 +32,10 @@ Do not use system CUDA at:
 ```
 
 That `nvcc` is too old for the current `gsplat` build because it does not support the required C++20 compilation mode. Use the micromamba environment CUDA toolchain instead.
+
+Do not stack the old uv `.venv-viewtrust-p0` environment with the micromamba
+environment. If `VIRTUAL_ENV` is set, deactivate it before activating the
+server environment.
 
 ## Activation
 
@@ -47,6 +59,21 @@ Expected runtime checks:
 ```text
 torch.cuda.is_available(): True
 gsplat import: ok
+```
+
+## Full Server Validation Flow
+
+Run this exact flow from the repository root on the server:
+
+```bash
+deactivate 2>/dev/null || true
+
+export MAMBA_ROOT_PREFIX=/trainingData/sage/yue/.mamba-root
+eval "$(/trainingData/sage/yue/tools/micromamba/bin/micromamba shell hook -s bash)"
+micromamba activate /trainingData/sage/yue/envs/viewtrust-p0
+
+source scripts/env/activate_server_viewtrust_p0.sh
+bash scripts/checks/run_server_checks.sh
 ```
 
 ## Server Smoke Test

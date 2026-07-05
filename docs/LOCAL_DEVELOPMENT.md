@@ -26,6 +26,11 @@ bash scripts/checks/run_mock_checks.sh
 
 These commands are expected to run without CUDA and without importing `gsplat`.
 
+Local Mac development is limited to static checks, CPU-only mock tests, config
+parsing, path resolution, and metadata/log artifact writing. CUDA, `gsplat`
+rasterization, real training, and real Priority 0 GPU measurements are server
+work only.
+
 ## Not Local-Safe
 
 Do not treat the following as complete based on local Mac execution:
@@ -39,6 +44,10 @@ Priority 0 timing measurement
 ```
 
 Those checks must run after syncing the repository to the remote server.
+
+On the server, use the micromamba environment directly. Do not stack an old uv
+virtual environment such as `.venv-viewtrust-p0` with the micromamba
+environment.
 
 ## Development Rule
 

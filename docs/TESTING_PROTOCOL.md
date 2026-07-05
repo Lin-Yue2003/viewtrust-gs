@@ -52,6 +52,19 @@ bash scripts/checks/run_server_checks.sh
 
 This command is not expected to pass on the local Mac.
 
+Recommended server validation flow:
+
+```bash
+deactivate 2>/dev/null || true
+
+export MAMBA_ROOT_PREFIX=/trainingData/sage/yue/.mamba-root
+eval "$(/trainingData/sage/yue/tools/micromamba/bin/micromamba shell hook -s bash)"
+micromamba activate /trainingData/sage/yue/envs/viewtrust-p0
+
+source scripts/env/activate_server_viewtrust_p0.sh
+bash scripts/checks/run_server_checks.sh
+```
+
 ## OPTIONAL-GPU
 
 OPTIONAL-GPU checks may run on any machine with a valid CUDA setup, but they are not required for local Mac development. They can be used for extra confidence, but the official GPU validation target is the remote server.

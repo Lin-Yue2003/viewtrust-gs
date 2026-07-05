@@ -116,13 +116,14 @@ docs/SERVER_ENVIRONMENT.md
 .env.server.example
 configs/server.example.yaml
 scripts/env/activate_server_viewtrust_p0.sh
+scripts/env/check_server_environment.sh
 ```
 
 ## 7. Environment Activation Policy
 
 Local development does not require CUDA activation. Local scripts infer the project root from their location and default to relative paths.
 
-Server execution must use the micromamba environment at the known server location and must use the environment CUDA 12.x toolchain, not the old system CUDA 11.0 toolchain.
+Server execution must use the micromamba environment at the known server location and must use the environment CUDA 12.x toolchain, not the old system CUDA 11.0 toolchain. CUDA headers may be provided under the environment target include directory as well as the top-level include directory.
 
 ## 8. GPU-Specific Import Isolation
 
