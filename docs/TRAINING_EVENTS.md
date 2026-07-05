@@ -202,3 +202,6 @@ VIEWTRUST_OBSERVER_STRICT=1
 
 PR7 is global event logging only. It does not track per-Gaussian lifecycle IDs
 or clone/split parent-child relationships. That belongs to PR8.
+
+PR8 preserves these PR7 outputs and adds separate Gaussian lifecycle outputs
+under `gaussian_lifecycle/` and `tables/gaussian_lifecycle_*.csv`.

@@ -27,6 +27,9 @@ class BaselineTrainingConfig:
     enable_training_events: bool = False
     training_event_log_interval: int = 10
     training_event_strict: bool = False
+    enable_gaussian_lifecycle: bool = False
+    gaussian_lifecycle_strict: bool = False
+    gaussian_lifecycle_log_snapshot_stats: bool = True
 
 
 def build_baseline_label(scene: str, condition: str, trainer: str) -> str:
@@ -151,6 +154,52 @@ def build_training_event_env(
     return env
 
 
+def build_gaussian_lifecycle_env(
+    *,
+    enabled: bool,
+    project_root: Path,
+    run_dir: Path,
+    run_id: str,
+    scene: str,
+    condition: str,
+    trainer: str,
+    strict: bool = False,
+    log_snapshot_stats: bool = True,
+    base_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build opt-in environment variables for PR8 lifecycle observation."""
+
+    if not enabled:
+        return {}
+    resolved_project_root = project_root.resolve()
+    existing_pythonpath = (base_env or os.environ).get("PYTHONPATH", "")
+    pythonpath_parts = [
+        str(resolved_project_root),
+        *[
+            part
+            for part in existing_pythonpath.split(os.pathsep)
+            if part and part != str(resolved_project_root)
+        ],
+    ]
+    env = {
+        "PYTHONPATH": os.pathsep.join(pythonpath_parts),
+        "VIEWTRUST_PROJECT_ROOT": str(resolved_project_root),
+        "VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE": "1",
+        "VIEWTRUST_GAUSSIAN_LIFECYCLE_DIR": str(run_dir / "gaussian_lifecycle"),
+        "VIEWTRUST_GAUSSIAN_LIFECYCLE_LOG_SNAPSHOT_STATS": "1"
+        if log_snapshot_stats
+        else "0",
+        "VIEWTRUST_RUN_ID": run_id,
+        "VIEWTRUST_SCENE": scene,
+        "VIEWTRUST_CONDITION": condition,
+        "VIEWTRUST_TRAINER": trainer,
+        "VIEWTRUST_OBSERVATION_ONLY": "1",
+    }
+    if strict:
+        env["VIEWTRUST_GAUSSIAN_LIFECYCLE_STRICT"] = "1"
+    return env
+
+
 def preflight_training_event_observer_import(
     *,
     python_executable: Path,
@@ -170,6 +219,36 @@ def preflight_training_event_observer_import(
                 "from viewtrust.observation.training_events import "
                 "TrainingEventObserver, TrainingEventObserverConfig; "
                 "print('observer import ok')"
+            ),
+        ],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=child_env,
+        cwd=str(cwd) if cwd else None,
+    )
+
+
+def preflight_gaussian_lifecycle_observer_import(
+    *,
+    python_executable: Path,
+    env_overrides: dict[str, str],
+    cwd: Path | None = None,
+    base_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Check that the child trainer environment can import the PR8 observer."""
+
+    child_env = dict(base_env or os.environ)
+    child_env.update(env_overrides)
+    return subprocess.run(
+        [
+            str(python_executable),
+            "-c",
+            (
+                "from viewtrust.observation.gaussian_lifecycle import "
+                "GaussianLifecycleObserver, GaussianLifecycleConfig; "
+                "print('gaussian lifecycle import ok')"
             ),
         ],
         check=False,

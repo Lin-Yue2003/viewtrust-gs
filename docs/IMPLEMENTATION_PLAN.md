@@ -268,3 +268,9 @@ the boolean visibility mask and normalized by current Gaussian count, observer
 rows are sanity-checked, summaries distinguish `requested_iterations` from
 `logged_iteration_count`, and `inspect_training_events.py --require-events`
 fails on impossible scalar rows. It remains observation-only.
+
+PR8 Gaussian Lifecycle Logging adds non-trainable per-run Gaussian lifecycle
+IDs, clone/split/prune observation hooks, final lifecycle tables, lifecycle
+summary inspection, and invariant checks. It extends the existing PR7
+observation patch rather than stacking a second patch, and remains strictly
+observation-only.

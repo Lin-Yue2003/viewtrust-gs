@@ -10,13 +10,19 @@ from pathlib import Path
 PATCH_NAME = "pr7_training_events"
 START = "# VIEWTRUST PR7 OBSERVATION START"
 END = "# VIEWTRUST PR7 OBSERVATION END"
+START_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE START"
+END_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE END"
 
 
 def inspect_patch(third_party_root: Path) -> dict[str, object]:
     train_path = third_party_root / "gaussian-splatting" / "train.py"
+    gaussian_model_path = third_party_root / "gaussian-splatting" / "scene" / "gaussian_model.py"
     exists = train_path.is_file()
+    model_exists = gaussian_model_path.is_file()
     text = train_path.read_text(encoding="utf-8") if exists else ""
+    model_text = gaussian_model_path.read_text(encoding="utf-8") if model_exists else ""
     marker_count = text.count(START)
+    lifecycle_marker_count = text.count(START_PR8) + model_text.count(START_PR8)
     applied = marker_count > 0 and END in text
     checks = {
         "has_markers": applied,
@@ -28,16 +34,30 @@ def inspect_patch(third_party_root: Path) -> dict[str, object]:
         "uses_bool_visibility_count": ".bool().sum()" in text,
         "uses_gaussian_count_visibility_ratio": "visible_count / gaussian_count" in text,
         "passes_requested_iterations": "requested_iterations=opt.iterations" in text,
+        "has_lifecycle_train_markers": START_PR8 in text and END_PR8 in text,
+        "has_lifecycle_model_markers": START_PR8 in model_text and END_PR8 in model_text,
+        "has_lifecycle_env_gate": "VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE" in text,
+        "imports_lifecycle_observer": "GaussianLifecycleObserver" in text,
+        "attaches_lifecycle_observer": "viewtrust_lifecycle_observer" in text,
+        "has_lifecycle_finalize": "\"finalize\"" in text
+        and "gaussian_lifecycle" in text,
+        "hooks_clone": "\"on_after_clone\"" in model_text,
+        "hooks_split": "\"on_after_split\"" in model_text,
+        "hooks_prune_before": "\"on_before_prune\"" in model_text,
+        "hooks_prune_after": "\"on_after_prune\"" in model_text,
         "keeps_densify_call": "gaussians.densify_and_prune(" in text,
         "keeps_optimizer_step": "gaussians.optimizer.step(" in text,
     }
-    ok = exists and applied and all(checks.values())
+    ok = exists and model_exists and applied and all(checks.values())
     return {
         "patch": PATCH_NAME,
         "train_path": str(train_path),
+        "gaussian_model_path": str(gaussian_model_path),
         "exists": exists,
+        "gaussian_model_exists": model_exists,
         "applied": applied,
         "marker_count": marker_count,
+        "lifecycle_marker_count": lifecycle_marker_count,
         "ok": ok,
         "checks": checks,
     }

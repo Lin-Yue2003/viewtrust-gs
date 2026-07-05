@@ -200,3 +200,40 @@ python scripts/train/run_clean_chair_baseline.py \
 
 The wrapper injects the repository root into the trainer child `PYTHONPATH` and
 preflights `viewtrust.observation.training_events` before launching training.
+
+## PR8 Gaussian Lifecycle
+
+PR8 extends the same observation patch to include Gaussian lifecycle hooks in
+`train.py` and `scene/gaussian_model.py`. Re-apply the patch from a clean
+official trainer checkout or restored backup, then check:
+
+```bash
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events
+
+python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events \
+  --require-applied
+```
+
+Server validation command:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition clean \
+  --iterations 700 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10 \
+  --training-event-strict \
+  --enable-gaussian-lifecycle \
+  --gaussian-lifecycle-strict
+```

@@ -35,6 +35,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--enable-training-events", action="store_true")
     parser.add_argument("--training-event-log-interval", type=int, default=10)
     parser.add_argument("--training-event-strict", action="store_true")
+    parser.add_argument("--enable-gaussian-lifecycle", action="store_true")
+    parser.add_argument("--gaussian-lifecycle-strict", action="store_true")
+    parser.add_argument(
+        "--gaussian-lifecycle-log-snapshot-stats",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -68,6 +75,9 @@ def _metadata(
         "training_events_enabled": args.enable_training_events,
         "training_event_log_interval": args.training_event_log_interval,
         "training_event_strict": args.training_event_strict,
+        "gaussian_lifecycle_enabled": args.enable_gaussian_lifecycle,
+        "gaussian_lifecycle_strict": args.gaussian_lifecycle_strict,
+        "gaussian_lifecycle_log_snapshot_stats": args.gaussian_lifecycle_log_snapshot_stats,
     }
 
 
@@ -80,7 +90,9 @@ def main() -> int:
         BaselineTrainingConfig,
         build_baseline_label,
         build_gaussian_splatting_command,
+        build_gaussian_lifecycle_env,
         build_training_event_env,
+        preflight_gaussian_lifecycle_observer_import,
         preflight_training_event_observer_import,
         resolve_prepared_scene_root,
         resolve_trainer_path,
@@ -101,6 +113,9 @@ def main() -> int:
         enable_training_events=args.enable_training_events,
         training_event_log_interval=args.training_event_log_interval,
         training_event_strict=args.training_event_strict,
+        enable_gaussian_lifecycle=args.enable_gaussian_lifecycle,
+        gaussian_lifecycle_strict=args.gaussian_lifecycle_strict,
+        gaussian_lifecycle_log_snapshot_stats=args.gaussian_lifecycle_log_snapshot_stats,
     )
 
     label = build_baseline_label(config.scene, config.condition, config.trainer)
@@ -162,6 +177,36 @@ def main() -> int:
                 print(preflight.stderr, file=sys.stderr)
             return 2
 
+    gaussian_lifecycle_env = build_gaussian_lifecycle_env(
+        enabled=config.enable_gaussian_lifecycle,
+        project_root=project_root,
+        run_dir=run_dir,
+        run_id=run_id,
+        scene=config.scene,
+        condition=config.condition,
+        trainer=config.trainer,
+        strict=config.gaussian_lifecycle_strict,
+        log_snapshot_stats=config.gaussian_lifecycle_log_snapshot_stats,
+    )
+    if config.enable_gaussian_lifecycle:
+        preflight = preflight_gaussian_lifecycle_observer_import(
+            python_executable=Path(command[0]),
+            env_overrides={"CUDA_VISIBLE_DEVICES": str(config.gpu), **gaussian_lifecycle_env},
+            cwd=trainer_path.parent,
+        )
+        if preflight.returncode != 0:
+            print(
+                "ERROR: Gaussian lifecycle logging is enabled, but the official "
+                "trainer child environment cannot import "
+                "viewtrust.observation.gaussian_lifecycle.",
+                file=sys.stderr,
+            )
+            if preflight.stdout:
+                print(preflight.stdout, file=sys.stderr)
+            if preflight.stderr:
+                print(preflight.stderr, file=sys.stderr)
+            return 2
+
     config_snapshot = {
         "stage": "PR3_clean_baseline",
         "baseline": metadata,
@@ -169,12 +214,19 @@ def main() -> int:
             "run_dir": str(run_dir),
             "trainer_output_dir": str(trainer_output_dir),
             "training_events_dir": str(run_dir / "training_events"),
+            "gaussian_lifecycle_dir": str(run_dir / "gaussian_lifecycle"),
         },
         "training_events": {
             "enabled": config.enable_training_events,
             "log_interval": config.training_event_log_interval,
             "strict": config.training_event_strict,
             "pythonpath_injected": "PYTHONPATH" in training_event_env,
+        },
+        "gaussian_lifecycle": {
+            "enabled": config.enable_gaussian_lifecycle,
+            "strict": config.gaussian_lifecycle_strict,
+            "log_snapshot_stats": config.gaussian_lifecycle_log_snapshot_stats,
+            "pythonpath_injected": "PYTHONPATH" in gaussian_lifecycle_env,
         },
         "observation_only": True,
     }
@@ -191,6 +243,9 @@ def main() -> int:
         "training_events_enabled": config.enable_training_events,
         "training_event_env_keys": sorted(training_event_env),
         "training_event_strict": config.training_event_strict,
+        "gaussian_lifecycle_enabled": config.enable_gaussian_lifecycle,
+        "gaussian_lifecycle_env_keys": sorted(gaussian_lifecycle_env),
+        "gaussian_lifecycle_strict": config.gaussian_lifecycle_strict,
     }
     print(json.dumps(dry_run_report, indent=2, sort_keys=True))
 
@@ -205,7 +260,11 @@ def main() -> int:
         config=config_snapshot,
         sample_interval_s=config.sample_interval_s,
         label=label,
-        env_overrides={"CUDA_VISIBLE_DEVICES": str(config.gpu), **training_event_env},
+        env_overrides={
+            "CUDA_VISIBLE_DEVICES": str(config.gpu),
+            **training_event_env,
+            **gaussian_lifecycle_env,
+        },
         metadata_extra=metadata,
     )
     print(f"clean chair baseline run_dir: {result.run_dir}")

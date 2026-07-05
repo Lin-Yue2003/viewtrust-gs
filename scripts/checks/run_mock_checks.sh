@@ -17,6 +17,9 @@ python scripts/smoke/view_metrics_extraction_smoke_test.py
 python scripts/smoke/training_events_child_env_smoke_test.py
 python scripts/smoke/training_event_observer_smoke_test.py
 python scripts/smoke/training_event_sanity_smoke_test.py
+python scripts/smoke/gaussian_lifecycle_observer_smoke_test.py
+python scripts/smoke/gaussian_lifecycle_invariant_smoke_test.py
+python scripts/smoke/gaussian_lifecycle_child_env_smoke_test.py
 python scripts/smoke/gaussian_splatting_observation_patch_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 

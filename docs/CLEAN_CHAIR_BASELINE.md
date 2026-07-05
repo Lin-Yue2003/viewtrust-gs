@@ -294,6 +294,32 @@ fails, the wrapper exits before training with a clear error. The
 initialization or logging failures become process errors during server
 validation.
 
+## Instrument Gaussian Lifecycle
+
+PR8 can run with PR7 training events and Gaussian lifecycle logging together:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition clean \
+  --iterations 700 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10 \
+  --training-event-strict \
+  --enable-gaussian-lifecycle \
+  --gaussian-lifecycle-strict
+```
+
+Lifecycle IDs are observation-only metadata. They do not affect rendering,
+loss, optimizer state, sampling, densification, pruning, or opacity reset
+decisions.
+
 ## Missing Dependency Errors
 
 If the wrapper reports that `third_party/gaussian-splatting/train.py` is

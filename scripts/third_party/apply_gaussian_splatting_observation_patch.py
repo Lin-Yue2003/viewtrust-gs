@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the PR7 observation-only patch to a local Gaussian Splatting clone."""
+"""Apply the PR7/PR8 observation-only patch to a local Gaussian Splatting clone."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from pathlib import Path
 PATCH_NAME = "pr7_training_events"
 START = "# VIEWTRUST PR7 OBSERVATION START"
 END = "# VIEWTRUST PR7 OBSERVATION END"
+START_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE START"
+END_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE END"
 
 
 HELPER_SNIPPET = f'''
@@ -152,6 +154,67 @@ def _viewtrust_pr7_call(observer, method_name, **kwargs):
 '''
 
 
+LIFECYCLE_TRAIN_SNIPPET = f'''
+{START_PR8}
+def _viewtrust_pr8_init_lifecycle_observer(dataset, opt, first_iter, scene, gaussians):
+    if os.environ.get("VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE") != "1":
+        return None
+    try:
+        from viewtrust.observation.gaussian_lifecycle import GaussianLifecycleObserver
+
+        observer = GaussianLifecycleObserver.from_environment()
+        if observer is not None:
+            observer.on_after_scene_init(
+                iteration=first_iter,
+                gaussians=gaussians,
+                gaussian_count=_viewtrust_pr7_count_gaussians(gaussians),
+            )
+            gaussians.viewtrust_lifecycle_observer = observer
+            gaussians.viewtrust_lifecycle_iteration = first_iter
+        return observer
+    except Exception as exc:
+        if os.environ.get("VIEWTRUST_GAUSSIAN_LIFECYCLE_STRICT") == "1":
+            raise
+        print(f"[ViewTrust] Gaussian lifecycle observer initialization failed: {{exc!r}}")
+        print("[ViewTrust] Gaussian lifecycle logging disabled.")
+        return None
+
+
+def _viewtrust_pr8_call(observer, method_name, **kwargs):
+    if observer is None:
+        return None
+    try:
+        return getattr(observer, method_name)(**kwargs)
+    except Exception as exc:
+        if os.environ.get("VIEWTRUST_GAUSSIAN_LIFECYCLE_STRICT") == "1":
+            raise
+        print(f"VIEWTRUST PR8 lifecycle observer call failed: {{exc}}")
+        return None
+{END_PR8}
+'''
+
+
+LIFECYCLE_MODEL_SNIPPET = f'''
+{START_PR8}
+def _viewtrust_pr8_model_call(model, method_name, **kwargs):
+    observer = getattr(model, "viewtrust_lifecycle_observer", None)
+    if observer is None:
+        return None
+    try:
+        return getattr(observer, method_name)(**kwargs)
+    except Exception as exc:
+        if os.environ.get("VIEWTRUST_GAUSSIAN_LIFECYCLE_STRICT") == "1":
+            raise
+        print(f"VIEWTRUST PR8 lifecycle model hook failed: {{exc}}")
+        return None
+
+
+def _viewtrust_pr8_model_iteration(model):
+    return getattr(model, "viewtrust_lifecycle_iteration", "")
+{END_PR8}
+'''
+
+
 def _insert_after(text: str, needle: str, insertion: str) -> str:
     if needle not in text:
         raise ValueError(f"patch anchor not found: {needle[:80]!r}")
@@ -164,7 +227,11 @@ def apply_patch_text(text: str) -> str:
     if "def training(dataset, opt, pipe" not in text:
         raise ValueError("train.py does not look like the expected official training file")
 
-    text = _insert_after(text, "except:\n    SPARSE_ADAM_AVAILABLE = False\n", "\n" + HELPER_SNIPPET + "\n")
+    text = _insert_after(
+        text,
+        "except:\n    SPARSE_ADAM_AVAILABLE = False\n",
+        "\n" + HELPER_SNIPPET + "\n" + LIFECYCLE_TRAIN_SNIPPET + "\n",
+    )
 
     checkpoint_block = (
         "    if checkpoint:\n"
@@ -176,6 +243,9 @@ def apply_patch_text(text: str) -> str:
         f"    {START}\n"
         "    viewtrust_observer = _viewtrust_pr7_init_observer(dataset, opt, first_iter, scene, gaussians)\n"
         f"    {END}\n"
+        f"    {START_PR8}\n"
+        "    viewtrust_lifecycle_observer = _viewtrust_pr8_init_lifecycle_observer(dataset, opt, first_iter, scene, gaussians)\n"
+        f"    {END_PR8}\n"
     )
     text = _insert_after(text, checkpoint_block, observer_init)
 
@@ -229,6 +299,7 @@ def apply_patch_text(text: str) -> str:
         "                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None\n"
         f"                    {START}\n"
         "                    viewtrust_gaussian_count_before = _viewtrust_pr7_count_gaussians(gaussians)\n"
+        "                    gaussians.viewtrust_lifecycle_iteration = iteration\n"
         f"                    {END}\n"
         "                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)\n"
         f"                    {START}\n"
@@ -236,6 +307,7 @@ def apply_patch_text(text: str) -> str:
         "                    viewtrust_gaussian_count_after = _viewtrust_pr7_count_gaussians(gaussians)\n"
         "                    _viewtrust_pr7_call(viewtrust_observer, \"log_densification_event\", iteration=iteration, densification_eligible=True, densification_triggered=True, densify_from_iter=opt.densify_from_iter, densify_until_iter=opt.densify_until_iter, densification_interval=opt.densification_interval, densify_grad_threshold=opt.densify_grad_threshold, size_threshold=size_threshold, gaussian_count_before=viewtrust_gaussian_count_before, gaussian_count_after=viewtrust_gaussian_count_after, opacity_reset_triggered=False, status=\"ok\")\n"
         "                    _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"after_densification\", gaussian_count=viewtrust_gaussian_count_after)\n"
+        "                    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"on_after_densification\", iteration=iteration, gaussians=gaussians, gaussian_count=viewtrust_gaussian_count_after)\n"
         f"                    {END}\n"
     )
     if densify_call not in text:
@@ -303,8 +375,76 @@ def apply_patch_text(text: str) -> str:
         f"\n    {START}\n"
         "    _viewtrust_pr7_call(viewtrust_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
         f"    {END}\n"
+        f"    {START_PR8}\n"
+        "    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, gaussians=gaussians, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
+        f"    {END_PR8}\n"
     )
     text = _insert_after(text, checkpoint_patch, finalize_patch)
+    return text
+
+
+def apply_gaussian_model_patch_text(text: str) -> str:
+    if START_PR8 in text:
+        raise ValueError("PR8 Gaussian lifecycle patch is already applied")
+    if "class GaussianModel:" not in text:
+        raise ValueError("gaussian_model.py does not look like the expected official file")
+
+    text = _insert_after(text, "except:\n    pass\n\n", LIFECYCLE_MODEL_SNIPPET + "\n")
+
+    prune_start = "    def prune_points(self, mask):\n        valid_points_mask = ~mask\n"
+    prune_replacement = (
+        "    def prune_points(self, mask):\n"
+        f"        {START_PR8}\n"
+        "        _viewtrust_pr8_model_call(self, \"on_before_prune\", iteration=_viewtrust_pr8_model_iteration(self), prune_mask=mask, gaussians=self)\n"
+        f"        {END_PR8}\n"
+        "        valid_points_mask = ~mask\n"
+    )
+    if prune_start not in text:
+        raise ValueError("prune_points anchor not found")
+    text = text.replace(prune_start, prune_replacement, 1)
+
+    prune_tail = (
+        "        self.denom = self.denom[valid_points_mask]\n"
+        "        self.max_radii2D = self.max_radii2D[valid_points_mask]\n"
+        "        self.tmp_radii = self.tmp_radii[valid_points_mask]\n"
+    )
+    prune_tail_replacement = (
+        prune_tail
+        + f"        {START_PR8}\n"
+        "        _viewtrust_pr8_model_call(self, \"on_after_prune\", iteration=_viewtrust_pr8_model_iteration(self), prune_mask=mask, gaussians=self)\n"
+        + f"        {END_PR8}\n"
+    )
+    if prune_tail not in text:
+        raise ValueError("prune_points tail anchor not found")
+    text = text.replace(prune_tail, prune_tail_replacement, 1)
+
+    split_postfix = (
+        "        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)\n\n"
+        "        prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device=\"cuda\", dtype=bool)))\n"
+    )
+    split_replacement = (
+        "        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)\n"
+        f"        {START_PR8}\n"
+        "        _viewtrust_pr8_model_call(self, \"on_after_split\", iteration=_viewtrust_pr8_model_iteration(self), source_mask=selected_pts_mask, children_per_source=N, gaussians=self)\n"
+        f"        {END_PR8}\n\n"
+        "        prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device=\"cuda\", dtype=bool)))\n"
+    )
+    if split_postfix not in text:
+        raise ValueError("densify_and_split postfix anchor not found")
+    text = text.replace(split_postfix, split_replacement, 1)
+
+    clone_postfix = (
+        "        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)\n"
+    )
+    clone_replacement = (
+        clone_postfix
+        + f"        {START_PR8}\n"
+        "        _viewtrust_pr8_model_call(self, \"on_after_clone\", iteration=_viewtrust_pr8_model_iteration(self), source_mask=selected_pts_mask, gaussians=self)\n"
+        + f"        {END_PR8}\n"
+    )
+    if clone_postfix not in text:
+        raise ValueError("densify_and_clone postfix anchor not found")
+    text = text.replace(clone_postfix, clone_replacement, 1)
     return text
 
 
@@ -323,10 +463,19 @@ def main() -> int:
         raise SystemExit(f"unsupported patch: {args.patch}")
 
     train_path = args.third_party_root / "gaussian-splatting" / "train.py"
+    gaussian_model_path = (
+        args.third_party_root / "gaussian-splatting" / "scene" / "gaussian_model.py"
+    )
     if not train_path.is_file():
         raise SystemExit(f"ERROR: train.py not found: {train_path}")
+    if not gaussian_model_path.is_file():
+        raise SystemExit(f"ERROR: gaussian_model.py not found: {gaussian_model_path}")
     original = train_path.read_text(encoding="utf-8")
-    already_applied = START in original and "VIEWTRUST_ENABLE_TRAINING_EVENTS" in original
+    original_model = gaussian_model_path.read_text(encoding="utf-8")
+    already_applied = (
+        START in original
+        and "VIEWTRUST_ENABLE_TRAINING_EVENTS" in original
+    ) or START_PR8 in original_model
     if already_applied and not args.force:
         raise SystemExit("ERROR: PR7 observation patch is already applied. Use --force to reapply.")
 
@@ -335,20 +484,31 @@ def main() -> int:
         raise SystemExit("ERROR: --force reapply is intentionally not supported for patched files. Restore backup first.")
 
     patched = apply_patch_text(source)
+    patched_model = apply_gaussian_model_patch_text(original_model)
     backup_path = train_path.with_name("train.py.viewtrust-pr7-backup")
+    model_backup_path = gaussian_model_path.with_name(
+        "gaussian_model.py.viewtrust-pr8-backup"
+    )
     report = {
         "patch": args.patch,
         "train_path": str(train_path),
+        "gaussian_model_path": str(gaussian_model_path),
         "backup_path": str(backup_path),
+        "gaussian_model_backup_path": str(model_backup_path),
         "dry_run": args.dry_run,
-        "changed": patched != original,
-        "markers_inserted": patched.count(START),
+        "changed": patched != original or patched_model != original_model,
+        "markers_inserted": patched.count(START) + patched.count(START_PR8),
+        "model_markers_inserted": patched_model.count(START_PR8),
     }
     if not args.dry_run:
         if backup_path.exists() and not args.force:
             raise SystemExit(f"ERROR: backup already exists: {backup_path}")
+        if model_backup_path.exists() and not args.force:
+            raise SystemExit(f"ERROR: backup already exists: {model_backup_path}")
         shutil.copy2(train_path, backup_path)
+        shutil.copy2(gaussian_model_path, model_backup_path)
         train_path.write_text(patched, encoding="utf-8")
+        gaussian_model_path.write_text(patched_model, encoding="utf-8")
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 
