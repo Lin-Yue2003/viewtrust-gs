@@ -17,19 +17,16 @@ def _bootstrap_project_imports() -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    data_root = os.environ.get("VIEWTRUST_DATA_ROOT")
+    data_root = os.environ.get("VIEWTRUST_DATA_ROOT", "./data")
     default_raw_scene_root = (
         str(Path(data_root) / "raw" / "nerf_synthetic" / "chair")
-        if data_root
-        else "data/raw/nerf_synthetic/chair"
     )
     default_output_root = (
         str(Path(data_root) / "viewtrust-mini" / "nerf_synthetic" / "chair")
-        if data_root
-        else "data/viewtrust-mini/nerf_synthetic/chair"
     )
 
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-root", default=data_root)
     parser.add_argument("--raw-scene-root", default=default_raw_scene_root)
     parser.add_argument("--output-root", default=default_output_root)
     parser.add_argument("--scene", default="chair")
@@ -54,6 +51,29 @@ def _resolve_path(project_root: Path, raw_path: str) -> Path:
     return path if path.is_absolute() else project_root / path
 
 
+def _print_missing_data_message(raw_scene_root: Path, data_root: Path) -> None:
+    print("ERROR: Raw NeRF Synthetic scene is missing.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Expected:", file=sys.stderr)
+    print(f"  {raw_scene_root}/transforms_train.json", file=sys.stderr)
+    print(f"  {raw_scene_root}/transforms_test.json", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Please place the raw NeRF Synthetic chair scene at:", file=sys.stderr)
+    print("  data/raw/nerf_synthetic/chair", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("or set:", file=sys.stderr)
+    print(f"  VIEWTRUST_DATA_ROOT={data_root}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Expected layout:", file=sys.stderr)
+    print("  chair/", file=sys.stderr)
+    print("    transforms_train.json", file=sys.stderr)
+    print("    transforms_test.json", file=sys.stderr)
+    print("    train/", file=sys.stderr)
+    print("    test/", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("This PR does not download the dataset automatically.", file=sys.stderr)
+
+
 def main() -> int:
     project_root = _bootstrap_project_imports()
 
@@ -64,20 +84,27 @@ def main() -> int:
 
     args = parse_args()
     max_image_width = args.max_image_width if args.max_image_width > 0 else None
-    plan = prepare_nerf_synthetic_subset(
-        raw_scene_root=_resolve_path(project_root, args.raw_scene_root),
-        output_root=_resolve_path(project_root, args.output_root),
-        scene=args.scene,
-        condition=args.condition,
-        max_train_views=args.max_train_views,
-        max_test_views=args.max_test_views,
-        max_target_views=args.max_target_views,
-        max_image_width=max_image_width,
-        copy_mode=args.copy_mode,
-        seed=args.seed,
-        dry_run=args.dry_run,
-        overwrite=args.overwrite,
-    )
+    data_root = _resolve_path(project_root, args.data_root)
+    raw_scene_root = _resolve_path(project_root, args.raw_scene_root)
+    try:
+        plan = prepare_nerf_synthetic_subset(
+            data_root=data_root,
+            raw_scene_root=raw_scene_root,
+            output_root=_resolve_path(project_root, args.output_root),
+            scene=args.scene,
+            condition=args.condition,
+            max_train_views=args.max_train_views,
+            max_test_views=args.max_test_views,
+            max_target_views=args.max_target_views,
+            max_image_width=max_image_width,
+            copy_mode=args.copy_mode,
+            seed=args.seed,
+            dry_run=args.dry_run,
+            overwrite=args.overwrite,
+        )
+    except FileNotFoundError:
+        _print_missing_data_message(raw_scene_root, data_root)
+        return 2
 
     print(json.dumps(plan_summary(plan, dry_run=args.dry_run), indent=2, sort_keys=True))
     print("nerf synthetic subset dry-run ok" if args.dry_run else "nerf synthetic subset prepare ok")

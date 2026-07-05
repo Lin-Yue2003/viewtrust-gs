@@ -26,6 +26,30 @@ scripts/data/prepare_nerf_synthetic_subset.py
 This recipe assumes the raw NeRF Synthetic chair scene has already been
 downloaded. It does not auto-download large datasets.
 
+The first tested source was:
+
+```text
+Hugging Face: rishitdagli/nerf-gs-datasets
+folder: chair
+```
+
+The server-tested raw layout was:
+
+```text
+$VIEWTRUST_DATA_ROOT/raw/nerf_synthetic/chair/
+  README.txt
+  train/
+  test/
+  val/
+  transforms_train.json
+  transforms_test.json
+  transforms_val.json
+```
+
+Observed raw chair size on the server was `126M`. The prepared subset uses 20
+train views, 5 test views, 3 target views, and max width 400. If
+`will_resize=true`, resized images are written even when `copy_mode=symlink`.
+
 ## Dry Run
 
 Local-safe dry run:

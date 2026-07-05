@@ -73,6 +73,8 @@ def _contains_absolute_server_path(path: Path) -> bool:
         '"raw_scene_root": "/trainingData' in text
         or '"output_scene_root": "/trainingData' in text
         or '"file_path": "/' in text
+        or "/tmp/" in text
+        or "/var/folders/" in text
     )
 
 
@@ -98,6 +100,7 @@ def main() -> int:
             _write_transforms(raw_scene_root / f"transforms_{split}.json", split, count)
 
         plan = prepare_nerf_synthetic_subset(
+            data_root=tmp_root,
             raw_scene_root=raw_scene_root,
             output_root=output_root,
             scene="chair",
@@ -137,6 +140,12 @@ def main() -> int:
             raise ValueError("selected target count mismatch")
         if manifest["image_count"] != plan.image_count:
             raise ValueError("manifest image_count mismatch")
+        if "source_image_path" in json.dumps(manifest):
+            raise ValueError("manifest contains absolute source_image_path field")
+        if manifest["raw_scene_root"]["path"] != "raw/nerf_synthetic/chair":
+            raise ValueError("manifest raw_scene_root is not data-root-relative")
+        if manifest["output_scene_root"]["path"] != "viewtrust-mini/nerf_synthetic/chair/clean":
+            raise ValueError("manifest output_scene_root is not data-root-relative")
 
         for transform_name in (
             "transforms_train.json",

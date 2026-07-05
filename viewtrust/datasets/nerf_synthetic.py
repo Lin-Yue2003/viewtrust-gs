@@ -27,12 +27,19 @@ class PreparedFrame:
     output_image_path: Path
     resized: bool
 
-    def as_manifest_entry(self) -> dict[str, object]:
+    def as_manifest_entry(self, raw_scene_root: Path) -> dict[str, object]:
+        try:
+            source_image_relative_path = self.source_image_path.relative_to(
+                raw_scene_root
+            ).as_posix()
+        except ValueError:
+            source_image_relative_path = Path(self.source_file_path).as_posix()
+
         return {
             "index": self.index,
             "split": self.split,
             "source_file_path": self.source_file_path,
-            "source_image_path": str(self.source_image_path),
+            "source_image_relative_path": source_image_relative_path,
             "output_file_path": self.output_file_path,
             "resized": self.resized,
         }
@@ -40,6 +47,7 @@ class PreparedFrame:
 
 @dataclass(frozen=True)
 class NerfSyntheticSubsetPlan:
+    data_root: Path
     raw_scene_root: Path
     output_condition_root: Path
     scene: str
@@ -244,6 +252,20 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _portable_path(path: Path, data_root: Path) -> dict[str, str]:
+    try:
+        relative_path = path.resolve().relative_to(data_root.resolve()).as_posix()
+        return {
+            "path": relative_path,
+            "path_type": "relative_to_data_root",
+        }
+    except ValueError:
+        return {
+            "path": os.path.relpath(path.resolve(), data_root.resolve()),
+            "path_type": "relative_to_data_root",
+        }
+
+
 def _manifest(plan: NerfSyntheticSubsetPlan) -> dict[str, Any]:
     return {
         "schema_name": NERF_SYNTHETIC_SUBSET_SCHEMA,
@@ -258,11 +280,21 @@ def _manifest(plan: NerfSyntheticSubsetPlan) -> dict[str, Any]:
         "max_image_width": plan.max_image_width,
         "copy_mode": plan.copy_mode,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "raw_scene_root": str(plan.raw_scene_root),
-        "output_scene_root": str(plan.output_condition_root),
-        "selected_train_frames": [frame.as_manifest_entry() for frame in plan.train_frames],
-        "selected_test_frames": [frame.as_manifest_entry() for frame in plan.test_frames],
-        "selected_target_frames": [frame.as_manifest_entry() for frame in plan.target_frames],
+        "data_root": {
+            "path": ".",
+            "path_type": "data_root",
+        },
+        "raw_scene_root": _portable_path(plan.raw_scene_root, plan.data_root),
+        "output_scene_root": _portable_path(plan.output_condition_root, plan.data_root),
+        "selected_train_frames": [
+            frame.as_manifest_entry(plan.raw_scene_root) for frame in plan.train_frames
+        ],
+        "selected_test_frames": [
+            frame.as_manifest_entry(plan.raw_scene_root) for frame in plan.test_frames
+        ],
+        "selected_target_frames": [
+            frame.as_manifest_entry(plan.raw_scene_root) for frame in plan.target_frames
+        ],
         "image_count": plan.image_count,
         "notes": [
             "clean condition only",
@@ -274,6 +306,7 @@ def _manifest(plan: NerfSyntheticSubsetPlan) -> dict[str, Any]:
 
 def build_nerf_synthetic_subset_plan(
     *,
+    data_root: Path,
     raw_scene_root: Path,
     output_root: Path,
     scene: str,
@@ -292,6 +325,7 @@ def build_nerf_synthetic_subset_plan(
     if copy_mode not in SUPPORTED_COPY_MODES:
         raise ValueError(f"copy_mode must be one of {sorted(SUPPORTED_COPY_MODES)}")
 
+    data_root = data_root.resolve()
     raw_scene_root = raw_scene_root.resolve()
     output_condition_root = (output_root / condition).resolve()
     train_transforms = _load_transforms(raw_scene_root / "transforms_train.json")
@@ -326,6 +360,7 @@ def build_nerf_synthetic_subset_plan(
     )
 
     plan = NerfSyntheticSubsetPlan(
+        data_root=data_root,
         raw_scene_root=raw_scene_root,
         output_condition_root=output_condition_root,
         scene=scene,
@@ -348,6 +383,7 @@ def build_nerf_synthetic_subset_plan(
 
 def prepare_nerf_synthetic_subset(
     *,
+    data_root: Path,
     raw_scene_root: Path,
     output_root: Path,
     scene: str,
@@ -364,6 +400,7 @@ def prepare_nerf_synthetic_subset(
     """Prepare a NeRF Synthetic clean subset from an already downloaded scene."""
 
     plan, train_transforms, test_transforms = build_nerf_synthetic_subset_plan(
+        data_root=data_root,
         raw_scene_root=raw_scene_root,
         output_root=output_root,
         scene=scene,

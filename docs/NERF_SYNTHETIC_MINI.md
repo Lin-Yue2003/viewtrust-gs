@@ -24,6 +24,13 @@ server storage during early experiments.
 
 ## Raw Dataset Layout
 
+The first server-tested source was:
+
+```text
+Hugging Face: rishitdagli/nerf-gs-datasets
+folder: chair
+```
+
 Place the already downloaded raw scene at either:
 
 ```text
@@ -40,6 +47,7 @@ Expected raw scene layout:
 
 ```text
 chair/
+  README.txt
   transforms_train.json
   transforms_val.json
   transforms_test.json
@@ -49,6 +57,12 @@ chair/
 ```
 
 `transforms_val.json` may exist, but PR2 ignores it.
+
+Observed server raw chair size:
+
+```text
+126M
+```
 
 ## Prepared Output Layout
 
@@ -86,6 +100,11 @@ max_image_width: 400
 condition: clean only
 copy_mode: symlink
 ```
+
+The tested server subset selected 20 train views, 5 test views, and 3 target
+views. On the tested source, `will_resize=true` because source images were wider
+than 400 pixels. In that case resized output images are written even when
+`copy_mode=symlink`.
 
 Frames are selected by deterministic uniform sampling across each split. This
 avoids selecting only adjacent views.
@@ -126,6 +145,7 @@ On the server, prefer:
 
 ```bash
 python scripts/data/prepare_nerf_synthetic_subset.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
   --raw-scene-root "$VIEWTRUST_DATA_ROOT/raw/nerf_synthetic/chair" \
   --output-root "$VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair" \
   --scene chair \
@@ -143,12 +163,49 @@ python scripts/data/prepare_nerf_synthetic_subset.py \
 Check:
 
 ```bash
-find data/viewtrust-mini/nerf_synthetic/chair/clean -maxdepth 2 -type f | sort
-python -m json.tool data/viewtrust-mini/nerf_synthetic/chair/clean/manifest.json
+find "$VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair/clean" -maxdepth 2 -type f | sort
+du -sh "$VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair/clean"
+python - <<'PY'
+import json, os
+from pathlib import Path
+
+root = Path(os.environ["VIEWTRUST_DATA_ROOT"]) / "viewtrust-mini/nerf_synthetic/chair/clean"
+manifest = json.loads((root / "manifest.json").read_text())
+print("image_count:", manifest["image_count"])
+print("train:", len(manifest["selected_train_frames"]))
+print("test:", len(manifest["selected_test_frames"]))
+print("target:", len(manifest["selected_target_frames"]))
+for name in ["transforms_train.json", "transforms_test.json", "transforms_target.json"]:
+    data = json.loads((root / name).read_text())
+    print(name, len(data["frames"]))
+PY
 ```
 
 The prepared transform `file_path` entries should be relative paths under
 `images/`.
+
+`manifest.json` records dataset roots relative to `VIEWTRUST_DATA_ROOT`; it
+should not contain machine-specific absolute paths.
+
+## Regenerate Portable Manifest
+
+After PR2 manifest cleanup is pulled on the server, regenerate the prepared
+subset:
+
+```bash
+python scripts/data/prepare_nerf_synthetic_subset.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --raw-scene-root "$VIEWTRUST_DATA_ROOT/raw/nerf_synthetic/chair" \
+  --output-root "$VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair" \
+  --scene chair \
+  --condition clean \
+  --max-train-views 20 \
+  --max-test-views 5 \
+  --max-target-views 3 \
+  --max-image-width 400 \
+  --copy-mode symlink \
+  --overwrite
+```
 
 ## Storage Policy
 
