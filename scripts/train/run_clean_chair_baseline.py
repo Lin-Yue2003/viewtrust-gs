@@ -32,6 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--sample-interval-s", type=float, default=1.0)
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--enable-training-events", action="store_true")
+    parser.add_argument("--training-event-log-interval", type=int, default=10)
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -62,6 +64,8 @@ def _metadata(
         "third_party_modified": False,
         "viewtrust_scoring_enabled": False,
         "defense_enabled": False,
+        "training_events_enabled": args.enable_training_events,
+        "training_event_log_interval": args.training_event_log_interval,
     }
 
 
@@ -74,6 +78,7 @@ def main() -> int:
         BaselineTrainingConfig,
         build_baseline_label,
         build_gaussian_splatting_command,
+        build_training_event_env,
         resolve_prepared_scene_root,
         resolve_trainer_path,
         validate_prepared_scene,
@@ -90,6 +95,8 @@ def main() -> int:
         iterations=args.iterations,
         gpu=args.gpu,
         sample_interval_s=args.sample_interval_s,
+        enable_training_events=args.enable_training_events,
+        training_event_log_interval=args.training_event_log_interval,
     )
 
     label = build_baseline_label(config.scene, config.condition, config.trainer)
@@ -122,12 +129,26 @@ def main() -> int:
         trainer_path=trainer_path,
         command=command,
     )
+    training_event_env = build_training_event_env(
+        enabled=config.enable_training_events,
+        run_dir=run_dir,
+        run_id=run_id,
+        scene=config.scene,
+        condition=config.condition,
+        trainer=config.trainer,
+        log_interval=config.training_event_log_interval,
+    )
     config_snapshot = {
         "stage": "PR3_clean_baseline",
         "baseline": metadata,
         "output": {
             "run_dir": str(run_dir),
             "trainer_output_dir": str(trainer_output_dir),
+            "training_events_dir": str(run_dir / "training_events"),
+        },
+        "training_events": {
+            "enabled": config.enable_training_events,
+            "log_interval": config.training_event_log_interval,
         },
         "observation_only": True,
     }
@@ -141,6 +162,8 @@ def main() -> int:
         "trainer_output_dir": str(trainer_output_dir),
         "cuda_visible_devices": str(config.gpu),
         "command": command,
+        "training_events_enabled": config.enable_training_events,
+        "training_event_env_keys": sorted(training_event_env),
     }
     print(json.dumps(dry_run_report, indent=2, sort_keys=True))
 
@@ -155,7 +178,7 @@ def main() -> int:
         config=config_snapshot,
         sample_interval_s=config.sample_interval_s,
         label=label,
-        env_overrides={"CUDA_VISIBLE_DEVICES": str(config.gpu)},
+        env_overrides={"CUDA_VISIBLE_DEVICES": str(config.gpu), **training_event_env},
         metadata_extra=metadata,
     )
     print(f"clean chair baseline run_dir: {result.run_dir}")

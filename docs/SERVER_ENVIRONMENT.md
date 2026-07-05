@@ -148,3 +148,32 @@ np.byte -> np.uint8
 
 This patch is documented server-local state. Do not commit third-party source
 changes to ViewTrust-GS.
+
+## PR7 Observation Patch
+
+PR7 uses an explicit local patch to add observation-only training event hooks to
+the server's official Gaussian Splatting clone. Apply it manually:
+
+```bash
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events
+```
+
+Check it manually:
+
+```bash
+python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events \
+  --require-applied
+```
+
+The server environment check can also require it explicitly:
+
+```bash
+bash scripts/env/check_server_environment.sh --require-gaussian-splatting --require-observation-patch
+```
+
+This patch is opt-in and activates only when the clean baseline wrapper is run
+with `--enable-training-events`.

@@ -87,6 +87,10 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
     view_metrics_summary_path = run_dir / "view_metrics_summary.json"
     view_metrics_path = run_dir / "tables" / "view_metrics.csv"
     view_render_artifacts_path = run_dir / "tables" / "view_render_artifacts.csv"
+    training_events_summary_path = run_dir / "training_events_summary.json"
+    training_events_path = run_dir / "tables" / "training_events.csv"
+    densification_events_path = run_dir / "tables" / "densification_events.csv"
+    gaussian_count_timeseries_path = run_dir / "tables" / "gaussian_count_timeseries.csv"
 
     final_gaussian_count = None
     if training_dynamics_summary_path.exists():
@@ -140,6 +144,10 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
         "view_metrics_available": view_metrics_summary_path.exists()
         and view_metrics_path.exists()
         and view_render_artifacts_path.exists(),
+        "has_training_events_summary": training_events_summary_path.exists(),
+        "has_training_events_csv": training_events_path.exists(),
+        "has_densification_events_csv": densification_events_path.exists(),
+        "has_gaussian_count_timeseries_csv": gaussian_count_timeseries_path.exists(),
     }
 
 

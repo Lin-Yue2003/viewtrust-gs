@@ -143,3 +143,7 @@ Those belong to later PRs.
 PR6 consumes a successful baseline run after PR5 and adds per-view clean render
 metrics for train, test, and target views. PR6 remains post-hoc and
 observation-only; it does not add trust scores or modify training behavior.
+
+PR7 then adds opt-in global training event logging through a local
+observation-only trainer patch. PR7 still does not add Gaussian lifecycle IDs
+or trust scores.

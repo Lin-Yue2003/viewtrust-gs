@@ -7,10 +7,14 @@ fail() {
 }
 
 REQUIRE_GAUSSIAN_SPLATTING=0
+REQUIRE_OBSERVATION_PATCH=0
 for arg in "$@"; do
   case "${arg}" in
     --require-gaussian-splatting)
       REQUIRE_GAUSSIAN_SPLATTING=1
+      ;;
+    --require-observation-patch)
+      REQUIRE_OBSERVATION_PATCH=1
       ;;
     *)
       fail "unknown argument: ${arg}"
@@ -37,6 +41,7 @@ echo "CUDA_PATH=${CUDA_PATH:-}"
 echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
 echo "PATH=${PATH}"
 echo "REQUIRE_GAUSSIAN_SPLATTING=${REQUIRE_GAUSSIAN_SPLATTING}"
+echo "REQUIRE_OBSERVATION_PATCH=${REQUIRE_OBSERVATION_PATCH}"
 
 [ -n "${CUDA_HOME:-}" ] || fail "CUDA_HOME is missing. Source scripts/env/activate_server_viewtrust_p0.sh first."
 
@@ -159,6 +164,14 @@ print(f"GaussianRasterizer={GaussianRasterizer}")
 print(f"distCUDA2={distCUDA2}")
 print(f"fused_ssim={getattr(fused_ssim, '__file__', '<unknown>')}")
 PY
+fi
+
+if [ "${REQUIRE_OBSERVATION_PATCH}" -eq 1 ]; then
+  THIRD_PARTY_ROOT="${VIEWTRUST_THIRD_PARTY_ROOT:-${PROJECT_ROOT}/third_party}"
+  python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+    --third-party-root "${THIRD_PARTY_ROOT}" \
+    --patch pr7_training_events \
+    --require-applied
 fi
 
 echo "server environment check ok"

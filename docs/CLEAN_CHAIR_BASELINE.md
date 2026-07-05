@@ -261,6 +261,31 @@ which produces the incorrect mini chair counts `train=25, test=0`. Target
 evaluation also requires `--eval` because PR6 renders target through a
 `target_as_test` scene.
 
+## Instrument Training Events
+
+PR7 can run the same clean baseline with opt-in training event logging after the
+local official Gaussian Splatting clone has been patched:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition clean \
+  --iterations 500 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10
+```
+
+The flag is off by default. When enabled, the wrapper only sets environment
+variables consumed by the PR7 observation patch; it does not change the
+baseline training command, losses, optimizer, sampling, densification, pruning,
+opacity reset, or rendering decisions.
+
 ## Missing Dependency Errors
 
 If the wrapper reports that `third_party/gaussian-splatting/train.py` is

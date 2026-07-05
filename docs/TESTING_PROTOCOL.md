@@ -20,6 +20,8 @@ training wrapper dry-run smoke test
 training dynamics extraction smoke test
 view render wrapper dry-run smoke test
 view metrics extraction smoke test
+training event observer smoke test
+Gaussian Splatting observation patch dry-run/check smoke test
 ```
 
 Commands:
@@ -37,6 +39,9 @@ It also runs `training_dynamics_extraction_smoke_test.py` on a fake observed run
 with a tiny PLY file.
 It also runs `view_render_wrapper_dry_run_smoke_test.py` and
 `view_metrics_extraction_smoke_test.py` without CUDA.
+It also runs `training_event_observer_smoke_test.py` and
+`gaussian_splatting_observation_patch_smoke_test.py` without touching real
+`third_party` source.
 
 ## Observed Command Checks
 
@@ -96,6 +101,9 @@ official Gaussian Splatting CUDA submodule import validation
 extract_training_dynamics.py on a successful clean chair baseline run
 render_clean_views.py on a successful clean chair baseline run
 extract_view_metrics.py on rendered train/test/target views
+manual PR7 observation patch application/check
+instrumented clean chair baseline with --enable-training-events
+inspect_training_events.py on the instrumented run
 ```
 
 Command:
@@ -158,6 +166,36 @@ The PR6 render wrapper must pass `--eval` to official Gaussian Splatting
 train and causes the mini chair split counts to become `train=25, test=0`
 instead of `train=20, test=5`. Target-as-test rendering also depends on
 `--eval`.
+
+PR7 server validation adds:
+
+```bash
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events
+
+python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events \
+  --require-applied
+
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition clean \
+  --iterations 500 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10
+
+python scripts/measure/inspect_training_events.py \
+  --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
+  --require-events
+```
 
 Recommended server validation flow:
 

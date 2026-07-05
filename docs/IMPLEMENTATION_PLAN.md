@@ -209,6 +209,7 @@ PR3: baseline clean training wrapper
 PR4: training-internal Priority 0 logging
 PR5: training dynamics logging from clean baseline runs
 PR6: view-level clean metrics
+PR7: training event and densification dynamics logging
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -245,3 +246,13 @@ PR6.1 fixes official Gaussian Splatting Blender rendering by requiring `--eval`
 for train/test and target-as-test render commands. It also validates requested
 split counts so the known bad state `train=25, test=0, target=0` cannot pass as
 a successful clean mini chair evaluation.
+
+PR7 Training Event and Densification Dynamics Logging adds an opt-in,
+observation-only patch for the local official Gaussian Splatting trainer. It
+records global iteration events, Gaussian count timeseries, and densification
+schedule/trigger rows without changing loss, optimizer, sampling, rendering,
+densification, pruning, opacity reset, or save behavior.
+
+PR7 does not include per-Gaussian lifecycle IDs, parent-child split/clone
+tracking, view attribution, trust scores, defenses, corruptions, or poisoning.
+Those belong to later PRs.

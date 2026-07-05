@@ -1,0 +1,19 @@
+schema_name: viewtrust.training_events.config
+schema_version: 1
+observation_only: true
+trainer: gaussian-splatting
+scene: chair
+condition: clean
+iteration_count: 500
+log_interval: 10
+enabled_events:
+  - iteration_metrics
+  - gaussian_count
+  - densification_schedule
+  - opacity_reset
+  - save
+not_enabled:
+  - trust_score
+  - defense
+  - lifecycle_tracking
+  - view_attribution

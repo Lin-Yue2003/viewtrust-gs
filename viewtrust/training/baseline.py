@@ -22,6 +22,8 @@ class BaselineTrainingConfig:
     iterations: int
     gpu: int
     sample_interval_s: float
+    enable_training_events: bool = False
+    training_event_log_interval: int = 10
 
 
 def build_baseline_label(scene: str, condition: str, trainer: str) -> str:
@@ -98,3 +100,31 @@ def build_gaussian_splatting_command(
         "--iterations",
         str(iterations),
     ]
+
+
+def build_training_event_env(
+    *,
+    enabled: bool,
+    run_dir: Path,
+    run_id: str,
+    scene: str,
+    condition: str,
+    trainer: str,
+    log_interval: int,
+) -> dict[str, str]:
+    """Build opt-in environment variables for PR7 training event observation."""
+
+    if not enabled:
+        return {}
+    if log_interval <= 0:
+        raise ValueError("training_event_log_interval must be positive")
+    return {
+        "VIEWTRUST_ENABLE_TRAINING_EVENTS": "1",
+        "VIEWTRUST_TRAINING_EVENTS_DIR": str(run_dir / "training_events"),
+        "VIEWTRUST_RUN_ID": run_id,
+        "VIEWTRUST_SCENE": scene,
+        "VIEWTRUST_CONDITION": condition,
+        "VIEWTRUST_TRAINER": trainer,
+        "VIEWTRUST_OBSERVATION_ONLY": "1",
+        "VIEWTRUST_TRAINING_EVENT_LOG_INTERVAL": str(log_interval),
+    }

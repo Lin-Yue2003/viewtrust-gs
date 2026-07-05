@@ -157,3 +157,6 @@ densification event attribution, or training-loop hooks.
 
 If target rendering fails because of official renderer constraints, report the
 failure and keep train/test metrics visible. Do not silently drop target.
+
+PR7 adds opt-in global training event and densification schedule logging after
+PR6. PR7 still does not add trust scores or Gaussian lifecycle tracking.

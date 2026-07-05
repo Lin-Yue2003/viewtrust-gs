@@ -1,0 +1,152 @@
+# Training Events
+
+PR7 adds observation-only global training event logging for official Gaussian
+Splatting clean baseline runs.
+
+This is the first ViewTrust-GS stage that uses an explicit local patch around
+the official trainer loop. The patch is opt-in, marker-delimited, and applied
+only by a user command on the server. Patched `third_party` source is not
+committed to ViewTrust-GS.
+
+## Scope
+
+PR7 logs global training events:
+
+```text
+iteration metrics
+selected train camera identity when available
+loss, L1, SSIM, optional depth loss
+iteration timing
+Gaussian count
+visibility and radii statistics
+densification schedule and trigger state
+opacity reset trigger state
+optimizer step status
+save and checkpoint events
+```
+
+PR7 does not implement Gaussian lifecycle tracking, parent-child clone/split
+IDs, view attribution, trust scores, defenses, poisoning, corruptions, or any
+training behavior changes.
+
+## Why Densification May Be Absent
+
+The 500-iteration clean chair baseline may have zero triggered densification
+events. Official defaults commonly require:
+
+```text
+iteration > densify_from_iter
+```
+
+and `densify_from_iter` is often 500. A 500-iteration run can therefore finish
+before the first densification trigger. This is valid and should be recorded as
+a warning, not treated as failure.
+
+## Patch Workflow
+
+Apply the observation patch manually on the server:
+
+```bash
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events
+```
+
+Check the patch:
+
+```bash
+python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events \
+  --require-applied
+```
+
+The patch activates only when:
+
+```text
+VIEWTRUST_ENABLE_TRAINING_EVENTS=1
+```
+
+The clean baseline wrapper sets this only when
+`--enable-training-events` is passed.
+
+## Instrumented Baseline
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition clean \
+  --iterations 500 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10
+```
+
+## Outputs
+
+For an instrumented run:
+
+```text
+training_events/
+  training_events.csv
+  densification_events.csv
+  gaussian_count_timeseries.csv
+  observer_warnings.jsonl
+  training_events_summary.json
+tables/
+  training_events.csv
+  densification_events.csv
+  gaussian_count_timeseries.csv
+training_events_summary.json
+```
+
+`training_events.csv` records global iteration/save/checkpoint events.
+`densification_events.csv` records actual densification calls when they occur.
+`gaussian_count_timeseries.csv` records count checkpoints such as
+`after_scene_init`, `iteration_end`, and `final`.
+
+## Inspect
+
+```bash
+RUN_DIR=$(find outputs/baseline/chair_clean_gaussian_splatting -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+
+python scripts/measure/inspect_training_events.py \
+  --run-dir "$RUN_DIR" \
+  --require-events
+
+cat "$RUN_DIR/training_events_summary.json"
+head -20 "$RUN_DIR/tables/training_events.csv"
+head -20 "$RUN_DIR/tables/densification_events.csv"
+head -20 "$RUN_DIR/tables/gaussian_count_timeseries.csv"
+```
+
+## Safety Rules
+
+The observer must not affect training:
+
+```text
+no backward calls
+no tensor mutation
+no optimizer calls
+no loss modification
+no sampling modification
+no densification condition changes
+no pruning or opacity reset decision changes
+no retained GPU tensor references
+```
+
+Logging failures disable the observer by default. Strict failure mode is opt-in:
+
+```text
+VIEWTRUST_OBSERVER_STRICT=1
+```
+
+## Known Limitations
+
+PR7 is global event logging only. It does not track per-Gaussian lifecycle IDs
+or clone/split parent-child relationships. That belongs to PR8.
