@@ -25,7 +25,8 @@ bash scripts/checks/run_mock_checks.sh
 ```
 
 `run_mock_checks.sh` includes the CPU-only scaffold smoke test and the Priority
-0 logging smoke test.
+0 logging, measurement format, observed command wrapper, and dataset installer
+dry-run smoke tests.
 
 ## SERVER-REQUIRED
 

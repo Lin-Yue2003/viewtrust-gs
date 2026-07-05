@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from viewtrust.analysis.tables import write_csv_table
 from viewtrust.logging.schema import (
     EVENT_SCHEMA,
     RUN_METADATA_SCHEMA,
@@ -34,6 +35,9 @@ class Priority0Logger:
         self.events_path = run_dir / "events.jsonl"
         self.metadata_path = run_dir / "metadata.json"
         self.config_snapshot_path = run_dir / "config_snapshot.json"
+        self.summary_path = run_dir / "summary.json"
+        self.stats_path = run_dir / "stats.json"
+        self.tables_dir = run_dir / "tables"
         self.run_dir.mkdir(parents=True, exist_ok=False)
 
     def write_metadata(self, metadata: dict[str, Any]) -> Path:
@@ -78,6 +82,57 @@ class Priority0Logger:
         with self.events_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, sort_keys=True) + "\n")
         return event
+
+    def write_summary(self, summary: dict[str, Any]) -> Path:
+        document = {
+            "schema_name": "viewtrust.priority0.summary",
+            "schema_version": SCHEMA_VERSION,
+            "run_id": self.run_id,
+            "created_at_utc": utc_now_iso(),
+            "summary": summary,
+        }
+        self.summary_path.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self.write_event("summary_snapshot", {"path": str(self.summary_path)})
+        return self.summary_path
+
+    def write_stats(self, stats: dict[str, Any]) -> Path:
+        document = {
+            "schema_name": "viewtrust.priority0.stats",
+            "schema_version": SCHEMA_VERSION,
+            "run_id": self.run_id,
+            "created_at_utc": utc_now_iso(),
+            "stats": stats,
+        }
+        self.stats_path.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self.write_event("summary_snapshot", {"path": str(self.stats_path)})
+        return self.stats_path
+
+    def write_table(
+        self,
+        table_name: str,
+        rows: list[dict[str, Any]],
+        fieldnames: list[str],
+    ) -> Path:
+        if not table_name.replace("_", "").replace("-", "").isalnum():
+            raise ValueError(f"unsafe table name: {table_name}")
+        path = self.tables_dir / f"{table_name}.csv"
+        write_csv_table(path, rows, fieldnames)
+        self.write_event(
+            "table_snapshot",
+            {
+                "table_name": table_name,
+                "path": str(path),
+                "row_count": len(rows),
+                "fieldnames": fieldnames,
+            },
+        )
+        return path
 
     def write_run_start(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.write_event("run_start", payload or {})

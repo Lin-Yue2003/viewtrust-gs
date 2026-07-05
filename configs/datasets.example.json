@@ -1,0 +1,22 @@
+{
+  "schema_name": "viewtrust.datasets.manifest",
+  "schema_version": 1,
+  "datasets": [
+    {
+      "name": "mipnerf360-garden-placeholder",
+      "url": "https://example.com/datasets/mipnerf360-garden.tar.gz",
+      "target_subdir": "mipnerf360/garden",
+      "sha256": null,
+      "archive_type": "tar.gz",
+      "optional": true
+    },
+    {
+      "name": "tanks-and-temples-truck-placeholder",
+      "url": "https://example.com/datasets/tanks-and-temples-truck.zip",
+      "target_subdir": "tanks_and_temples/truck",
+      "sha256": null,
+      "archive_type": "zip",
+      "optional": true
+    }
+  ]
+}

@@ -4,6 +4,8 @@
 # Runtime outputs and generated logs
 outputs/*
 !outputs/.gitkeep
+data/*
+!data/.gitkeep
 
 # Python cache files
 __pycache__/

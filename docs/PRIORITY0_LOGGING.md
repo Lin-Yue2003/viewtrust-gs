@@ -46,6 +46,9 @@ A Priority 0 run directory contains:
 metadata.json
 config_snapshot.json
 events.jsonl
+summary.json
+stats.json
+tables/
 ```
 
 Each event uses:
@@ -70,6 +73,10 @@ view_observation
 gpu_memory_observation
 timing_observation
 mock_observation
+summary_snapshot
+table_snapshot
+command_start
+command_end
 ```
 
 ## Local Validation
