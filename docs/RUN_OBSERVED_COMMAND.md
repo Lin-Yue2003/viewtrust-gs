@@ -59,6 +59,16 @@ python scripts/measure/run_observed_command.py \
 The wrapper observes the external process from the outside. It is intended to
 validate Priority 0 artifact capture before any training-loop instrumentation.
 
+For the PR3 clean chair baseline wrapper, prefer:
+
+```text
+docs/CLEAN_CHAIR_BASELINE.md
+scripts/train/run_clean_chair_baseline.py
+```
+
+That wrapper composes the external trainer command and then uses observed
+command logging in real mode.
+
 ## Output Files
 
 `metadata.json`

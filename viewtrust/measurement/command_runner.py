@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -65,6 +66,8 @@ def run_observed_command(
     config: dict[str, Any],
     sample_interval_s: float,
     label: str,
+    env_overrides: dict[str, str] | None = None,
+    metadata_extra: dict[str, Any] | None = None,
 ) -> ObservedCommandResult:
     """Run a command and write observation-only measurement artifacts."""
 
@@ -75,14 +78,15 @@ def run_observed_command(
 
     stdout_path = logger.run_dir / "stdout.log"
     stderr_path = logger.run_dir / "stderr.log"
-    logger.write_metadata(
-        {
-            "label": label,
-            "command": command,
-            "measurement_mode": "observed_subprocess",
-            "training_behavior_modified": False,
-        }
-    )
+    metadata = {
+        "label": label,
+        "command": command,
+        "measurement_mode": "observed_subprocess",
+        "training_behavior_modified": False,
+    }
+    if metadata_extra:
+        metadata.update(metadata_extra)
+    logger.write_metadata(metadata)
     logger.write_config_snapshot(config)
     logger.write_run_start({"label": label, "command": command})
     logger.write_event("command_start", {"label": label, "command": command})
@@ -90,6 +94,9 @@ def run_observed_command(
     gpu_rows: list[dict[str, object]] = []
     started = time.monotonic()
     next_sample = started
+    child_env = os.environ.copy()
+    if env_overrides:
+        child_env.update(env_overrides)
 
     with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open(
         "w",
@@ -100,6 +107,7 @@ def run_observed_command(
             stdout=stdout_handle,
             stderr=stderr_handle,
             text=True,
+            env=child_env,
         )
         while process.poll() is None:
             now = time.monotonic()

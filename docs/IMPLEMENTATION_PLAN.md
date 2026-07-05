@@ -215,3 +215,7 @@ outside and record Priority 0 artifacts without modifying training behavior.
 
 PR2 creates a minimal NeRF Synthetic chair subset preparation recipe. It is
 still observation preparation only and does not modify training behavior.
+
+PR3 creates a clean chair baseline training wrapper. It uses the observed
+command infrastructure to run an external trainer and does not modify training
+internals.

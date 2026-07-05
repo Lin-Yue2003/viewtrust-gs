@@ -1,0 +1,20 @@
+experiment:
+  stage: PR3_clean_baseline
+  trainer: gaussian-splatting
+  scene: chair
+  condition: clean
+  iterations: 500
+  gpu: 0
+  sample_interval_s: 1.0
+
+paths:
+  data_root: ./data
+  third_party_root: ./third_party
+  output_root: ./outputs
+
+policy:
+  observation_only: true
+  training_behavior_modified: false
+  third_party_modified: false
+  viewtrust_scoring_enabled: false
+  defense_enabled: false

@@ -16,6 +16,7 @@ metadata JSON writing
 schema placeholder validation
 CPU-only mock smoke tests
 tiny fake NeRF Synthetic subset preparation
+training wrapper dry-run smoke test
 ```
 
 Commands:
@@ -28,7 +29,7 @@ bash scripts/checks/run_mock_checks.sh
 `run_mock_checks.sh` includes the CPU-only scaffold smoke test and the Priority
 0 logging, measurement format, observed command wrapper, and dataset installer
 dry-run smoke tests. It also runs `nerf_synthetic_subset_smoke_test.py` with a
-tiny fake scene.
+tiny fake scene and `training_wrapper_dry_run_smoke_test.py` with a fake trainer.
 
 ## Observed Command Checks
 
@@ -82,6 +83,8 @@ real 3DGS training
 Priority 0 GPU memory and timing measurement
 preparing real NeRF Synthetic chair subset from raw data
 future training on prepared chair subset
+real clean chair baseline training
+observed GPU memory sampling during training
 ```
 
 Command:
