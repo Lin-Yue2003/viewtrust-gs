@@ -198,3 +198,17 @@ The next implementation step adds a local-safe Priority 0 logger that writes run
 metadata, config snapshots, and JSONL observation events. This foundation is
 intended to be called later by server-side training wrappers, but it does not
 modify training code or import GPU-specific dependencies.
+
+## PR Progression
+
+```text
+PR0: environment and scaffold
+PR1: observed command validation
+PR2: minimal dataset policy and NeRF Synthetic chair subset recipe
+PR3: baseline clean training wrapper
+PR4: training-internal Priority 0 logging
+```
+
+PR1 validates external observation before any training-loop instrumentation. It
+uses `scripts/measure/run_observed_command.py` to observe subprocesses from the
+outside and record Priority 0 artifacts without modifying training behavior.

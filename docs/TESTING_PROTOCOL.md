@@ -28,6 +28,42 @@ bash scripts/checks/run_mock_checks.sh
 0 logging, measurement format, observed command wrapper, and dataset installer
 dry-run smoke tests.
 
+## Observed Command Checks
+
+Observed command checks validate external-process observation before any
+training-loop instrumentation.
+
+LOCAL-SAFE:
+
+```text
+observed command mock test
+observed sleep test
+```
+
+Command:
+
+```bash
+bash scripts/checks/run_observed_checks.sh
+```
+
+GPU sampling may be empty locally when `nvidia-smi` is unavailable.
+
+SERVER-REQUIRED:
+
+```text
+observed gsplat CUDA smoke test
+future observed 3DGS training run
+```
+
+Server-required observed gsplat command:
+
+```bash
+python scripts/measure/run_observed_command.py \
+  --label gsplat-smoke-observed \
+  --sample-interval-s 0.2 \
+  -- python scripts/smoke/gsplat_cuda_smoke_test.py
+```
+
 ## SERVER-REQUIRED
 
 SERVER-REQUIRED checks must run on the remote Ubuntu GPU server:
