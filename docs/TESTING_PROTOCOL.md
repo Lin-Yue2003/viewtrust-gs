@@ -18,6 +18,8 @@ CPU-only mock smoke tests
 tiny fake NeRF Synthetic subset preparation
 training wrapper dry-run smoke test
 training dynamics extraction smoke test
+view render wrapper dry-run smoke test
+view metrics extraction smoke test
 ```
 
 Commands:
@@ -33,6 +35,8 @@ dry-run smoke tests. It also runs `nerf_synthetic_subset_smoke_test.py` with a
 tiny fake scene and `training_wrapper_dry_run_smoke_test.py` with a fake trainer.
 It also runs `training_dynamics_extraction_smoke_test.py` on a fake observed run
 with a tiny PLY file.
+It also runs `view_render_wrapper_dry_run_smoke_test.py` and
+`view_metrics_extraction_smoke_test.py` without CUDA.
 
 ## Observed Command Checks
 
@@ -90,6 +94,8 @@ real clean chair baseline training
 observed GPU memory sampling during training
 official Gaussian Splatting CUDA submodule import validation
 extract_training_dynamics.py on a successful clean chair baseline run
+render_clean_views.py on a successful clean chair baseline run
+extract_view_metrics.py on rendered train/test/target views
 ```
 
 Command:
@@ -121,6 +127,30 @@ Then extract PR5 training dynamics:
 python scripts/measure/extract_training_dynamics.py \
   --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
   --require-success
+```
+
+Then render and extract PR6 clean view metrics:
+
+```bash
+python scripts/evaluate/render_clean_views.py \
+  --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --trainer gaussian-splatting \
+  --scene chair \
+  --condition clean \
+  --iteration 500 \
+  --splits train test target \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --overwrite
+
+python scripts/measure/extract_view_metrics.py \
+  --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
+  --scene chair \
+  --condition clean \
+  --iteration 500 \
+  --require-renders
 ```
 
 Recommended server validation flow:

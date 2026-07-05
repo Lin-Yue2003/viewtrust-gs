@@ -84,6 +84,9 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
     training_dynamics_summary_path = run_dir / "training_dynamics_summary.json"
     training_dynamics_path = run_dir / "tables" / "training_dynamics.csv"
     final_gaussian_path = run_dir / "tables" / "final_gaussian_summary.csv"
+    view_metrics_summary_path = run_dir / "view_metrics_summary.json"
+    view_metrics_path = run_dir / "tables" / "view_metrics.csv"
+    view_render_artifacts_path = run_dir / "tables" / "view_render_artifacts.csv"
 
     final_gaussian_count = None
     if training_dynamics_summary_path.exists():
@@ -95,6 +98,13 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
             rows = list(csv.DictReader(handle))
         if rows:
             final_gaussian_count = rows[0].get("gaussian_count") or None
+
+    view_count_total = None
+    view_count_by_split = None
+    if view_metrics_summary_path.exists():
+        view_summary = _json_file(view_metrics_summary_path)
+        view_count_total = view_summary.get("view_count_total")
+        view_count_by_split = view_summary.get("view_count_by_split")
 
     return {
         "run_dir": str(run_dir),
@@ -122,6 +132,14 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
         "has_training_dynamics_csv": training_dynamics_path.exists(),
         "has_final_gaussian_summary": final_gaussian_path.exists(),
         "final_gaussian_count": final_gaussian_count,
+        "has_view_metrics_summary": view_metrics_summary_path.exists(),
+        "has_view_metrics_csv": view_metrics_path.exists(),
+        "has_view_render_artifacts_csv": view_render_artifacts_path.exists(),
+        "view_count_total": view_count_total,
+        "view_count_by_split": view_count_by_split,
+        "view_metrics_available": view_metrics_summary_path.exists()
+        and view_metrics_path.exists()
+        and view_render_artifacts_path.exists(),
     }
 
 

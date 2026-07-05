@@ -1,0 +1,23 @@
+schema_name: viewtrust.view_metrics.config
+schema_version: 1
+scene: chair
+condition: clean
+iteration: 500
+splits:
+  - train
+  - test
+  - target
+metrics:
+  - l1_mean
+  - mse
+  - psnr
+  - ssim
+  - residual_mean
+  - residual_p95
+  - residual_p99
+render:
+  trainer: gaussian-splatting
+  use_official_render: true
+  write_under_run_dir: true
+  target_split_strategy: target_as_test_eval_scene
+observation_only: true

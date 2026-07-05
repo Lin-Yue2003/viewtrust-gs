@@ -223,6 +223,38 @@ This extraction is read-only with respect to the trainer output. If TensorBoard
 event files are absent, the extraction still writes the artifact and final
 Gaussian summaries and records an explicit warning for missing loss curves.
 
+## Extract View-Level Clean Metrics
+
+After a clean baseline run and PR5 extraction, run PR6 view-level clean metrics:
+
+```bash
+RUN_DIR=$(find outputs/baseline/chair_clean_gaussian_splatting -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+
+python scripts/evaluate/render_clean_views.py \
+  --run-dir "$RUN_DIR" \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --trainer gaussian-splatting \
+  --scene chair \
+  --condition clean \
+  --iteration 500 \
+  --splits train test target \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --overwrite
+
+python scripts/measure/extract_view_metrics.py \
+  --run-dir "$RUN_DIR" \
+  --scene chair \
+  --condition clean \
+  --iteration 500 \
+  --require-renders
+```
+
+PR6 writes `view_metrics_summary.json`, `tables/view_metrics.csv`, and
+`tables/view_render_artifacts.csv`. It does not rerun training or edit
+`trainer_output/`.
+
 ## Missing Dependency Errors
 
 If the wrapper reports that `third_party/gaussian-splatting/train.py` is

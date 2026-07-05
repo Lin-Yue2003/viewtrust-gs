@@ -137,3 +137,9 @@ densification source attribution, trust scores, defenses, or any training
 behavior changes.
 
 Those belong to later PRs.
+
+## Next Step
+
+PR6 consumes a successful baseline run after PR5 and adds per-view clean render
+metrics for train, test, and target views. PR6 remains post-hoc and
+observation-only; it does not add trust scores or modify training behavior.

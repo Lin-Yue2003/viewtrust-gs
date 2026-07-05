@@ -208,6 +208,7 @@ PR2: minimal dataset policy and NeRF Synthetic chair subset recipe
 PR3: baseline clean training wrapper
 PR4: training-internal Priority 0 logging
 PR5: training dynamics logging from clean baseline runs
+PR6: view-level clean metrics
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -234,3 +235,8 @@ modifying trainer behavior.
 
 PR5 does not include view-level metrics or Gaussian lifecycle tracking. Those
 belong to PR6 and PR7.
+
+PR6 View-level Clean Metrics renders train, test, and target views from a
+successful clean baseline model and writes post-hoc per-view metric tables. PR6
+does not include trust scores, natural corruption or poison conditions,
+Gaussian lifecycle tracking, or densification event attribution.
