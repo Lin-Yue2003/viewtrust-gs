@@ -22,6 +22,7 @@ view render wrapper dry-run smoke test
 view metrics extraction smoke test
 training events child environment smoke test
 training event observer smoke test
+training event sanity inspector smoke test
 Gaussian Splatting observation patch dry-run/check smoke test
 ```
 
@@ -41,7 +42,8 @@ with a tiny PLY file.
 It also runs `view_render_wrapper_dry_run_smoke_test.py` and
 `view_metrics_extraction_smoke_test.py` without CUDA.
 It also runs `training_events_child_env_smoke_test.py`,
-`training_event_observer_smoke_test.py`, and
+`training_event_observer_smoke_test.py`,
+`training_event_sanity_smoke_test.py`, and
 `gaussian_splatting_observation_patch_smoke_test.py` without touching real
 `third_party` source.
 
@@ -107,6 +109,7 @@ manual PR7 observation patch application/check
 instrumented clean chair baseline with --enable-training-events
 strict child observer import validation with --training-event-strict
 inspect_training_events.py on the instrumented run
+training event scalar sanity validation
 ```
 
 Command:
@@ -199,6 +202,14 @@ python scripts/train/run_clean_chair_baseline.py \
 python scripts/measure/inspect_training_events.py \
   --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
   --require-events
+```
+
+The PR7.2 inspector sanity check requires:
+
+```text
+0 <= visible_gaussian_count <= gaussian_count
+0 <= visibility_ratio <= 1
+0 <= radii_nonzero_count <= gaussian_count
 ```
 
 Recommended server validation flow:

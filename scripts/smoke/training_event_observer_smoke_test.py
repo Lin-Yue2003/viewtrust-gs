@@ -114,6 +114,12 @@ def main() -> int:
         loaded = json.loads((output_dir / "training_events_summary.json").read_text())
         if loaded["observation_only"] is not True:
             raise ValueError("summary observation_only mismatch")
+        if loaded["requested_iterations"] != 2:
+            raise ValueError("summary requested_iterations mismatch")
+        if loaded["logged_iteration_count"] != 2:
+            raise ValueError("summary logged_iteration_count mismatch")
+        if loaded["invalid_training_event_rows"] != 0:
+            raise ValueError("summary invalid_training_event_rows mismatch")
         if summary["final_gaussian_count"] != 100010:
             raise ValueError("summary final_gaussian_count mismatch")
 

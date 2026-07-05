@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import shutil
 from dataclasses import dataclass
@@ -75,6 +76,108 @@ GAUSSIAN_COUNT_FIELDS = [
 ]
 
 
+def _is_unavailable(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value == "")
+
+
+def to_float_scalar(value: Any) -> float | None:
+    """Convert scalar-like values to Python floats without retaining tensors."""
+
+    if _is_unavailable(value):
+        return None
+    try:
+        if hasattr(value, "detach"):
+            value = value.detach()
+        if hasattr(value, "numel") and int(value.numel()) != 1:
+            return None
+        if hasattr(value, "item"):
+            value = value.item()
+        result = float(value)
+    except (TypeError, ValueError, RuntimeError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def to_int_scalar(value: Any) -> int | None:
+    """Convert scalar-like values to Python ints without retaining tensors."""
+
+    number = to_float_scalar(value)
+    if number is None:
+        return None
+    return int(number)
+
+
+def compute_visibility_stats(visibility_filter: Any, gaussian_count: int) -> dict[str, Any]:
+    """Return physically valid visibility counts derived from a boolean mask."""
+
+    stats: dict[str, Any] = {
+        "visible_gaussian_count": None,
+        "visibility_ratio": None,
+    }
+    if gaussian_count <= 0 or _is_unavailable(visibility_filter):
+        return stats
+    try:
+        detached = visibility_filter.detach() if hasattr(visibility_filter, "detach") else visibility_filter
+        if hasattr(detached, "bool") and hasattr(detached, "sum"):
+            visible_count = to_int_scalar(detached.bool().sum())
+        else:
+            visible_count = int(sum(1 for value in detached if bool(value)))
+    except (TypeError, ValueError, RuntimeError):
+        return stats
+    if visible_count is None or visible_count < 0 or visible_count > gaussian_count:
+        return stats
+    stats["visible_gaussian_count"] = visible_count
+    stats["visibility_ratio"] = visible_count / gaussian_count
+    return stats
+
+
+def compute_radii_stats(radii: Any) -> dict[str, Any]:
+    """Return scalar radii stats without storing tensor references."""
+
+    stats: dict[str, Any] = {
+        "radii_min": None,
+        "radii_mean": None,
+        "radii_max": None,
+        "radii_nonzero_count": None,
+    }
+    if _is_unavailable(radii):
+        return stats
+    try:
+        detached = radii.detach() if hasattr(radii, "detach") else radii
+        if hasattr(detached, "numel") and int(detached.numel()) == 0:
+            return stats
+        if hasattr(detached, "min") and hasattr(detached, "max"):
+            stats["radii_min"] = to_float_scalar(detached.min())
+            stats["radii_mean"] = to_float_scalar(detached.float().mean())
+            stats["radii_max"] = to_float_scalar(detached.max())
+            stats["radii_nonzero_count"] = to_int_scalar((detached > 0).sum())
+    except (TypeError, ValueError, RuntimeError):
+        return stats
+    return stats
+
+
+def compute_position_grad_stats(viewspace_point_tensor: Any) -> dict[str, Any]:
+    """Return scalar position-gradient norm stats without retaining tensors."""
+
+    stats: dict[str, Any] = {
+        "position_grad_mean": None,
+        "position_grad_max": None,
+    }
+    try:
+        grad = getattr(viewspace_point_tensor, "grad", None)
+        if grad is None:
+            return stats
+        detached = grad.detach() if hasattr(grad, "detach") else grad
+        if hasattr(detached, "numel") and int(detached.numel()) == 0:
+            return stats
+        grad_norm = detached.norm(dim=-1)
+        stats["position_grad_mean"] = to_float_scalar(grad_norm.mean())
+        stats["position_grad_max"] = to_float_scalar(grad_norm.max())
+    except (TypeError, ValueError, RuntimeError, AttributeError):
+        return stats
+    return stats
+
+
 @dataclass(frozen=True)
 class TrainingEventObserverConfig:
     output_dir: Path
@@ -101,8 +204,10 @@ class TrainingEventObserver:
         self.densification_event_rows = 0
         self.densification_trigger_count = 0
         self.opacity_reset_count = 0
+        self.invalid_training_event_rows = 0
         self.gaussian_count_rows = 0
         self.iterations_seen: set[int] = set()
+        self.requested_iterations: int | None = None
         self.initial_gaussian_count: int | None = None
         self.final_gaussian_count: int | None = None
 
@@ -158,6 +263,7 @@ class TrainingEventObserver:
             row["event_type"] = event_type
             row["timestamp_utc"] = row.get("timestamp_utc") or self._now()
             row["status"] = row.get("status") or "ok"
+            row = self._validate_training_event_row(row)
             self._append(self.training_events_path, TRAINING_EVENT_FIELDS, row)
             self.training_event_rows += 1
             if self._truthy(row.get("opacity_reset_triggered")):
@@ -215,6 +321,10 @@ class TrainingEventObserver:
 
     def finalize(self, **kwargs: Any) -> dict[str, Any]:
         def op() -> dict[str, Any]:
+            requested_iterations = self._int_or_none(kwargs.get("requested_iterations"))
+            if requested_iterations is None:
+                requested_iterations = self._int_or_none(kwargs.get("iteration"))
+            self.requested_iterations = requested_iterations
             final_count = self._int_or_none(kwargs.get("final_gaussian_count"))
             if final_count is not None:
                 self.log_gaussian_count(
@@ -239,8 +349,10 @@ class TrainingEventObserver:
                 "trainer": self.config.trainer,
                 "observation_only": self.config.observation_only,
                 "enabled": True,
-                "iteration_count": len(self.iterations_seen),
+                "requested_iterations": self.requested_iterations,
+                "logged_iteration_count": len(self.iterations_seen),
                 "training_event_rows": self.training_event_rows,
+                "invalid_training_event_rows": self.invalid_training_event_rows,
                 "densification_event_rows": self.densification_event_rows,
                 "densification_trigger_count": self.densification_trigger_count,
                 "opacity_reset_count": self.opacity_reset_count,
@@ -280,6 +392,44 @@ class TrainingEventObserver:
         warning = {"timestamp_utc": self._now(), "warning": message}
         with self.warnings_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(warning, sort_keys=True) + "\n")
+
+    def _validate_training_event_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        gaussian_count = to_int_scalar(row.get("gaussian_count"))
+        visible_count = to_int_scalar(row.get("visible_gaussian_count"))
+        visibility_ratio = to_float_scalar(row.get("visibility_ratio"))
+        radii_nonzero_count = to_int_scalar(row.get("radii_nonzero_count"))
+
+        warnings: list[str] = []
+        if gaussian_count is not None and gaussian_count < 0:
+            warnings.append("gaussian_count is negative")
+        if visible_count is not None and visible_count < 0:
+            warnings.append("visible_gaussian_count is negative")
+        if (
+            gaussian_count is not None
+            and visible_count is not None
+            and visible_count > gaussian_count
+        ):
+            warnings.append("visible_gaussian_count exceeds gaussian_count")
+        if visibility_ratio is not None and not (0.0 <= visibility_ratio <= 1.0):
+            warnings.append("visibility_ratio is outside [0, 1]")
+        if radii_nonzero_count is not None and radii_nonzero_count < 0:
+            warnings.append("radii_nonzero_count is negative")
+        if (
+            gaussian_count is not None
+            and radii_nonzero_count is not None
+            and radii_nonzero_count > gaussian_count
+        ):
+            warnings.append("radii_nonzero_count exceeds gaussian_count")
+
+        if warnings:
+            self.invalid_training_event_rows += 1
+            row["status"] = "invalid"
+            row["warning"] = "; ".join(warnings)
+            self._record_warning(
+                "invalid training event row"
+                f" iteration={row.get('iteration', '')}: {row['warning']}"
+            )
+        return row
 
     def _mirror_outputs(self) -> None:
         mirror_pairs = [
@@ -321,12 +471,7 @@ class TrainingEventObserver:
 
     @staticmethod
     def _int_or_none(value: Any) -> int | None:
-        if value in ("", None):
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
+        return to_int_scalar(value)
 
     @staticmethod
     def _truthy(value: Any) -> bool:

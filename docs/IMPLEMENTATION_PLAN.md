@@ -262,3 +262,9 @@ The clean baseline wrapper injects the project root into the child trainer
 `PYTHONPATH`, preflights the observer import before training, exposes
 `--training-event-strict`, and keeps observer failures visible. It remains
 observation-only and does not change training behavior.
+
+PR7.2 fixes training event data correctness. Visibility stats are computed from
+the boolean visibility mask and normalized by current Gaussian count, observer
+rows are sanity-checked, summaries distinguish `requested_iterations` from
+`logged_iteration_count`, and `inspect_training_events.py --require-events`
+fails on impossible scalar rows. It remains observation-only.

@@ -15,15 +15,36 @@ END = "# VIEWTRUST PR7 OBSERVATION END"
 
 HELPER_SNIPPET = f'''
 {START}
-def _viewtrust_pr7_scalar(value):
+def _viewtrust_pr7_to_float_scalar(value):
     if value is None:
-        return ""
+        return None
     try:
         if hasattr(value, "detach"):
-            return float(value.detach().item())
-        return float(value)
+            value = value.detach()
+        if hasattr(value, "numel") and int(value.numel()) != 1:
+            return None
+        if hasattr(value, "item"):
+            value = value.item()
+        result = float(value)
     except Exception:
+        return None
+    if result != result or result in (float("inf"), float("-inf")):
+        return None
+    return result
+
+
+def _viewtrust_pr7_to_int_scalar(value):
+    result = _viewtrust_pr7_to_float_scalar(value)
+    if result is None:
+        return None
+    return int(result)
+
+
+def _viewtrust_pr7_scalar(value):
+    result = _viewtrust_pr7_to_float_scalar(value)
+    if result is None:
         return ""
+    return result
 
 
 def _viewtrust_pr7_count_gaussians(gaussians):
@@ -33,18 +54,21 @@ def _viewtrust_pr7_count_gaussians(gaussians):
         return ""
 
 
-def _viewtrust_pr7_sum(value):
+def _viewtrust_pr7_visibility_stats(visibility_filter, gaussian_count):
+    stats = {{"visible_gaussian_count": "", "visibility_ratio": ""}}
     try:
-        return int(value.detach().sum().item())
+        if visibility_filter is None or gaussian_count == "":
+            return stats
+        detached = visibility_filter.detach()
+        visible_count = int(detached.bool().sum().item())
+        gaussian_count = int(gaussian_count)
+        if visible_count < 0 or visible_count > gaussian_count or gaussian_count <= 0:
+            return stats
+        stats["visible_gaussian_count"] = visible_count
+        stats["visibility_ratio"] = visible_count / gaussian_count
     except Exception:
-        return ""
-
-
-def _viewtrust_pr7_numel(value):
-    try:
-        return int(value.numel())
-    except Exception:
-        return ""
+        pass
+    return stats
 
 
 def _viewtrust_pr7_camera_name(camera):
@@ -81,12 +105,12 @@ def _viewtrust_pr7_radii_stats(radii):
 def _viewtrust_pr7_grad_stats(viewspace_point_tensor):
     stats = {{"position_grad_mean": "", "position_grad_max": ""}}
     try:
-        grad = viewspace_point_tensor.grad
+        grad = getattr(viewspace_point_tensor, "grad", None)
         if grad is None or grad.numel() == 0:
             return stats
-        detached = grad.detach().abs()
-        stats["position_grad_mean"] = float(detached.mean().item())
-        stats["position_grad_max"] = float(detached.max().item())
+        grad_norm = grad.detach().norm(dim=-1)
+        stats["position_grad_mean"] = float(grad_norm.mean().item())
+        stats["position_grad_max"] = float(grad_norm.max().item())
     except Exception:
         pass
     return stats
@@ -233,13 +257,12 @@ def apply_patch_text(text: str) -> str:
     optimizer_header = "            # Optimizer step\n"
     metrics_patch = (
         f"            {START}\n"
+        "            viewtrust_gaussian_count = _viewtrust_pr7_count_gaussians(gaussians)\n"
+        "            viewtrust_visibility_stats = _viewtrust_pr7_visibility_stats(visibility_filter, viewtrust_gaussian_count)\n"
         "            viewtrust_radii_stats = _viewtrust_pr7_radii_stats(radii)\n"
         "            viewtrust_grad_stats = _viewtrust_pr7_grad_stats(viewspace_point_tensor)\n"
-        "            viewtrust_visible_count = _viewtrust_pr7_sum(visibility_filter)\n"
-        "            viewtrust_visibility_total = _viewtrust_pr7_numel(visibility_filter)\n"
-        "            viewtrust_visibility_ratio = (viewtrust_visible_count / viewtrust_visibility_total) if viewtrust_visible_count != \"\" and viewtrust_visibility_total else \"\"\n"
-        "            _viewtrust_pr7_call(viewtrust_observer, \"log_iteration_metrics\", iteration=iteration, event_type=\"iteration_metrics\", camera_index=vind, camera_image_name=_viewtrust_pr7_camera_name(viewpoint_cam), loss=_viewtrust_pr7_scalar(loss), l1_loss=_viewtrust_pr7_scalar(Ll1), ssim=_viewtrust_pr7_scalar(ssim_value), depth_l1=Ll1depth, iter_time_ms=viewtrust_iter_time_ms, gaussian_count=_viewtrust_pr7_count_gaussians(gaussians), visible_gaussian_count=viewtrust_visible_count, visibility_ratio=viewtrust_visibility_ratio, densification_eligible=viewtrust_densification_eligible, densification_triggered=viewtrust_densification_triggered, opacity_reset_triggered=viewtrust_opacity_reset_triggered, optimizer_step=iteration < opt.iterations, status=\"ok\", **viewtrust_radii_stats, **viewtrust_grad_stats)\n"
-        "            _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"iteration_end\", gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
+        "            _viewtrust_pr7_call(viewtrust_observer, \"log_iteration_metrics\", iteration=iteration, event_type=\"iteration_metrics\", camera_index=vind, camera_image_name=_viewtrust_pr7_camera_name(viewpoint_cam), loss=_viewtrust_pr7_scalar(loss), l1_loss=_viewtrust_pr7_scalar(Ll1), ssim=_viewtrust_pr7_scalar(ssim_value), depth_l1=Ll1depth, iter_time_ms=viewtrust_iter_time_ms, gaussian_count=viewtrust_gaussian_count, densification_eligible=viewtrust_densification_eligible, densification_triggered=viewtrust_densification_triggered, opacity_reset_triggered=viewtrust_opacity_reset_triggered, optimizer_step=iteration < opt.iterations, status=\"ok\", **viewtrust_visibility_stats, **viewtrust_radii_stats, **viewtrust_grad_stats)\n"
+        "            _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"iteration_end\", gaussian_count=viewtrust_gaussian_count)\n"
         f"            {END}\n"
     )
     text = _insert_after(text, optimizer_header, metrics_patch)
@@ -278,7 +301,7 @@ def apply_patch_text(text: str) -> str:
 
     finalize_patch = (
         f"\n    {START}\n"
-        "    _viewtrust_pr7_call(viewtrust_observer, \"finalize\", iteration=opt.iterations, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
+        "    _viewtrust_pr7_call(viewtrust_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
         f"    {END}\n"
     )
     text = _insert_after(text, checkpoint_patch, finalize_patch)

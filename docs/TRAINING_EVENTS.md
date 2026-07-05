@@ -127,6 +127,18 @@ training_events_summary.json
 `gaussian_count_timeseries.csv` records count checkpoints such as
 `after_scene_init`, `iteration_end`, and `final`.
 
+PR7.2 enforces scalar sanity for visibility and radii fields:
+
+```text
+0 <= visible_gaussian_count <= gaussian_count
+0 <= visibility_ratio <= 1
+0 <= radii_nonzero_count <= gaussian_count
+```
+
+`visible_gaussian_count` is computed from `visibility_filter.detach().bool().sum()`.
+`visibility_ratio` uses the current Gaussian count as the denominator. The
+observer stores Python scalars only and does not retain tensors.
+
 ## Inspect
 
 ```bash
@@ -141,6 +153,22 @@ head -20 "$RUN_DIR/tables/training_events.csv"
 head -20 "$RUN_DIR/tables/densification_events.csv"
 head -20 "$RUN_DIR/tables/gaussian_count_timeseries.csv"
 ```
+
+With `--require-events`, the inspector fails if any training event row violates
+the visibility invariants. The compact report includes:
+
+```text
+invalid_training_event_rows
+max_visible_gaussian_count
+max_visibility_ratio
+max_gaussian_count
+requested_iterations
+logged_iteration_count
+```
+
+`logged_iteration_count` is the count of logged iteration rows, not the total
+trainer iteration request. `requested_iterations` records the trainer target
+when the patched trainer passes `opt.iterations` to the observer.
 
 ## Safety Rules
 

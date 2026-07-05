@@ -42,3 +42,10 @@ PR7.1 diagnostic behavior:
   - VIEWTRUST_OBSERVER_STRICT=1 re-raises observer failures
   - non-strict observer initialization failures are printed visibly and disable
     event logging
+
+PR7.2 data correctness behavior:
+
+  - visible_gaussian_count uses visibility_filter.detach().bool().sum()
+  - visibility_ratio uses visible_gaussian_count / gaussian_count
+  - requested_iterations=opt.iterations is passed to the observer summary
+  - patch checks require the corrected visibility extraction

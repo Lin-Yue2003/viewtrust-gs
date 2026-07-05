@@ -25,6 +25,9 @@ def inspect_patch(third_party_root: Path) -> dict[str, object]:
         "uses_observer_environment": "TrainingEventObserver.from_environment()" in text,
         "has_finalize": "\"finalize\"" in text or ".finalize(" in text,
         "has_densification_hook": "\"log_densification_event\"" in text,
+        "uses_bool_visibility_count": ".bool().sum()" in text,
+        "uses_gaussian_count_visibility_ratio": "visible_count / gaussian_count" in text,
+        "passes_requested_iterations": "requested_iterations=opt.iterations" in text,
         "keeps_densify_call": "gaussians.densify_and_prune(" in text,
         "keeps_optimizer_step": "gaussians.optimizer.step(" in text,
     }
