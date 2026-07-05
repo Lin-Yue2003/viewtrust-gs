@@ -7,59 +7,6 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-
-
-def _parse_scalar(value: str) -> Any:
-    value = value.strip()
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    if value == "null":
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        pass
-    try:
-        return float(value)
-    except ValueError:
-        return value.strip("\"'")
-
-
-def load_simple_yaml(path: Path) -> dict[str, Any]:
-    root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
-
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip(" "))
-        line = raw_line.strip()
-        if ":" not in line:
-            raise ValueError(f"{path}:{line_number}: expected a key/value pair")
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-        while indent <= stack[-1][0]:
-            stack.pop()
-        parent = stack[-1][1]
-        if value:
-            parent[key] = _parse_scalar(value)
-        else:
-            child: dict[str, Any] = {}
-            parent[key] = child
-            stack.append((indent, child))
-
-    return root
-
-
-def resolve_project_path(project_root: Path, raw_path: str) -> Path:
-    path = Path(raw_path)
-    if path.is_absolute():
-        raise ValueError(f"mock smoke test requires relative config paths, got {raw_path}")
-    return (project_root / path).resolve()
 
 
 def main() -> int:
@@ -67,13 +14,18 @@ def main() -> int:
         raise SystemExit("mock smoke test must not import gsplat")
 
     project_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(project_root))
+
+    from viewtrust.configs.loader import load_simple_yaml
+    from viewtrust.utils.paths import resolve_relative_path
+
     config_path = project_root / "configs" / "default.yaml"
     config = load_simple_yaml(config_path)
 
     paths = config.get("paths", {})
-    data_root = resolve_project_path(project_root, str(paths.get("data_root", "./data")))
-    output_root = resolve_project_path(project_root, str(paths.get("output_root", "./outputs")))
-    third_party_root = resolve_project_path(project_root, str(paths.get("third_party_root", "./third_party")))
+    data_root = resolve_relative_path(project_root, str(paths.get("data_root", "./data")))
+    output_root = resolve_relative_path(project_root, str(paths.get("output_root", "./outputs")))
+    third_party_root = resolve_relative_path(project_root, str(paths.get("third_party_root", "./third_party")))
 
     if output_root != (project_root / "outputs").resolve():
         raise ValueError("mock smoke test writes only under ./outputs")

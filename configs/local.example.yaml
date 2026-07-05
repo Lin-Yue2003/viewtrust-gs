@@ -11,6 +11,8 @@ logging:
   save_metadata: true
   save_config_snapshot: true
   format: json
+  events_filename: events.jsonl
+  observation_only: true
 
 runtime:
   require_cuda: false

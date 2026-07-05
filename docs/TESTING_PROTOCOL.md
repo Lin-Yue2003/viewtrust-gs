@@ -24,6 +24,9 @@ bash scripts/checks/run_static_checks.sh
 bash scripts/checks/run_mock_checks.sh
 ```
 
+`run_mock_checks.sh` includes the CPU-only scaffold smoke test and the Priority
+0 logging smoke test.
+
 ## SERVER-REQUIRED
 
 SERVER-REQUIRED checks must run on the remote Ubuntu GPU server:

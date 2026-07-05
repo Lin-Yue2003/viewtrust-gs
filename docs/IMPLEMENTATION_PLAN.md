@@ -190,3 +190,10 @@ This task does not implement ViewTrust scoring, a defense, densification gating,
 ## Future Priority 0 Roadmap
 
 After the scaffold is validated locally and on the server, future Priority 0 work can add observation-only logging around training execution. That future work must preserve training behavior and record metadata, timing, GPU memory, configuration snapshots, and view/iteration observations without changing optimization or rendering decisions.
+
+## Priority 0 Logging Foundation
+
+The next implementation step adds a local-safe Priority 0 logger that writes run
+metadata, config snapshots, and JSONL observation events. This foundation is
+intended to be called later by server-side training wrappers, but it does not
+modify training code or import GPU-specific dependencies.
