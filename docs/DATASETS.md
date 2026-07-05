@@ -12,6 +12,20 @@ configs/datasets.example.json
 It uses placeholder URLs by default. Replace them with real dataset URLs and
 checksums before downloading.
 
+## First Priority 0 Dataset
+
+The first recommended Priority 0 dataset path is the NeRF Synthetic chair mini
+subset recipe:
+
+```text
+docs/NERF_SYNTHETIC_MINI.md
+configs/nerf_synthetic_chair_minimal.yaml
+scripts/data/prepare_nerf_synthetic_subset.py
+```
+
+This recipe assumes the raw NeRF Synthetic chair scene has already been
+downloaded. It does not auto-download large datasets.
+
 ## Dry Run
 
 Local-safe dry run:

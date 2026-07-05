@@ -212,3 +212,6 @@ PR4: training-internal Priority 0 logging
 PR1 validates external observation before any training-loop instrumentation. It
 uses `scripts/measure/run_observed_command.py` to observe subprocesses from the
 outside and record Priority 0 artifacts without modifying training behavior.
+
+PR2 creates a minimal NeRF Synthetic chair subset preparation recipe. It is
+still observation preparation only and does not modify training behavior.

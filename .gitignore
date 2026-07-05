@@ -12,7 +12,7 @@ outputs/*
 !outputs/.gitkeep
 data/*
 !data/.gitkeep
-datasets/
+/datasets/
 
 # Third party source trees should not be accidentally vendored
 third_party/*

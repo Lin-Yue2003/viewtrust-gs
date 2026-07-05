@@ -1,0 +1,12 @@
+dataset:
+  family: nerf_synthetic
+  scene: chair
+  condition: clean
+  raw_scene_root: ./data/raw/nerf_synthetic/chair
+  output_root: ./data/viewtrust-mini/nerf_synthetic/chair
+  max_train_views: 20
+  max_test_views: 5
+  max_target_views: 3
+  max_image_width: 400
+  copy_mode: symlink
+  seed: 0
