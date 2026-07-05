@@ -17,6 +17,7 @@ schema placeholder validation
 CPU-only mock smoke tests
 tiny fake NeRF Synthetic subset preparation
 training wrapper dry-run smoke test
+training dynamics extraction smoke test
 ```
 
 Commands:
@@ -30,6 +31,8 @@ bash scripts/checks/run_mock_checks.sh
 0 logging, measurement format, observed command wrapper, and dataset installer
 dry-run smoke tests. It also runs `nerf_synthetic_subset_smoke_test.py` with a
 tiny fake scene and `training_wrapper_dry_run_smoke_test.py` with a fake trainer.
+It also runs `training_dynamics_extraction_smoke_test.py` on a fake observed run
+with a tiny PLY file.
 
 ## Observed Command Checks
 
@@ -86,6 +89,7 @@ future training on prepared chair subset
 real clean chair baseline training
 observed GPU memory sampling during training
 official Gaussian Splatting CUDA submodule import validation
+extract_training_dynamics.py on a successful clean chair baseline run
 ```
 
 Command:
@@ -107,6 +111,14 @@ After a clean chair baseline run, inspect the observed artifacts with:
 
 ```bash
 python scripts/measure/inspect_baseline_run.py \
+  --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
+  --require-success
+```
+
+Then extract PR5 training dynamics:
+
+```bash
+python scripts/measure/extract_training_dynamics.py \
   --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
   --require-success
 ```

@@ -11,6 +11,7 @@ python scripts/smoke/observed_command_smoke_test.py
 python scripts/smoke/nerf_synthetic_subset_smoke_test.py
 python scripts/smoke/training_wrapper_dry_run_smoke_test.py
 python scripts/smoke/baseline_run_inspection_smoke_test.py
+python scripts/smoke/training_dynamics_extraction_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"

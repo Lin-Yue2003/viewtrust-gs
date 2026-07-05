@@ -12,11 +12,17 @@ from viewtrust.training.baseline import (
     resolve_trainer_path,
     validate_prepared_scene,
 )
+from viewtrust.training.dynamics import (
+    TrainingDynamicsExtractionConfig,
+    extract_training_dynamics,
+)
 
 __all__ = [
     "BaselineTrainingConfig",
+    "TrainingDynamicsExtractionConfig",
     "build_baseline_label",
     "build_gaussian_splatting_command",
+    "extract_training_dynamics",
     "resolve_prepared_scene_root",
     "resolve_trainer_path",
     "validate_prepared_scene",

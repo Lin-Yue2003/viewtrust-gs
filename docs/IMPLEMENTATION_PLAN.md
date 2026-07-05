@@ -207,6 +207,7 @@ PR1: observed command validation
 PR2: minimal dataset policy and NeRF Synthetic chair subset recipe
 PR3: baseline clean training wrapper
 PR4: training-internal Priority 0 logging
+PR5: training dynamics logging from clean baseline runs
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -225,3 +226,11 @@ official Gaussian Splatting trainer at 500 iterations. Follow-up cleanup keeps
 the work observation-only: document server-local trainer dependencies, validate
 trainer CUDA submodule imports when requested, inspect observed baseline
 artifacts, and keep prepared transforms compatible with the official reader.
+
+PR5 Training Dynamics Logging extracts post-hoc global dynamics from completed
+clean baseline runs. It writes derived CSV tables and a summary JSON from
+existing observed artifacts and trainer outputs without rerunning training or
+modifying trainer behavior.
+
+PR5 does not include view-level metrics or Gaussian lifecycle tracking. Those
+belong to PR6 and PR7.

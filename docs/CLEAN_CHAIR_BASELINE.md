@@ -202,6 +202,27 @@ tail -80 "$RUN_DIR/stderr.log"
 cat "$RUN_DIR/tables/gpu_memory_samples.csv" 2>/dev/null || true
 ```
 
+## Extract Training Dynamics
+
+After a successful baseline run, extract PR5 post-hoc training dynamics:
+
+```bash
+RUN_DIR=$(find outputs/baseline/chair_clean_gaussian_splatting -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+
+python scripts/measure/extract_training_dynamics.py \
+  --run-dir "$RUN_DIR" \
+  --require-success
+
+cat "$RUN_DIR/training_dynamics_summary.json"
+cat "$RUN_DIR/tables/final_gaussian_summary.csv"
+head -20 "$RUN_DIR/tables/training_artifacts.csv"
+head -20 "$RUN_DIR/tables/training_dynamics.csv"
+```
+
+This extraction is read-only with respect to the trainer output. If TensorBoard
+event files are absent, the extraction still writes the artifact and final
+Gaussian summaries and records an explicit warning for missing loss curves.
+
 ## Missing Dependency Errors
 
 If the wrapper reports that `third_party/gaussian-splatting/train.py` is

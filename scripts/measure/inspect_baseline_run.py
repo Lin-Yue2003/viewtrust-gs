@@ -81,6 +81,20 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
     gpu_samples_path = run_dir / "tables" / "gpu_memory_samples.csv"
     gpu_samples_rows = _csv_row_count(gpu_samples_path)
     trainer_output = run_dir / "trainer_output"
+    training_dynamics_summary_path = run_dir / "training_dynamics_summary.json"
+    training_dynamics_path = run_dir / "tables" / "training_dynamics.csv"
+    final_gaussian_path = run_dir / "tables" / "final_gaussian_summary.csv"
+
+    final_gaussian_count = None
+    if training_dynamics_summary_path.exists():
+        final_gaussian_count = _json_file(training_dynamics_summary_path).get(
+            "final_gaussian_count"
+        )
+    elif final_gaussian_path.exists():
+        with final_gaussian_path.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        if rows:
+            final_gaussian_count = rows[0].get("gaussian_count") or None
 
     return {
         "run_dir": str(run_dir),
@@ -104,6 +118,10 @@ def inspect_baseline_run(run_dir: Path) -> dict[str, Any]:
         "stdout_log_bytes": stdout_path.stat().st_size if stdout_path.exists() else None,
         "stderr_log_bytes": stderr_path.stat().st_size if stderr_path.exists() else None,
         "training_behavior_modified": metadata.get("training_behavior_modified"),
+        "has_training_dynamics_summary": training_dynamics_summary_path.exists(),
+        "has_training_dynamics_csv": training_dynamics_path.exists(),
+        "has_final_gaussian_summary": final_gaussian_path.exists(),
+        "final_gaussian_count": final_gaussian_count,
     }
 
 

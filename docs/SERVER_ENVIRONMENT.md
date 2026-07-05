@@ -130,6 +130,15 @@ python -m pip install --no-build-isolation -e third_party/gaussian-splatting/sub
 Do not upgrade to `setuptools` 83+ in the validated `torch 2.12.1+cu126`
 environment unless the CUDA extension builds are revalidated.
 
+Optional dependency for PR5 loss-curve extraction from official Gaussian
+Splatting TensorBoard event files:
+
+```bash
+python -m pip install tensorboard
+```
+
+This is not required for local smoke tests or for PR5 artifact/PLY summaries.
+
 Known server-local compatibility patch for the official trainer:
 
 ```text

@@ -1,0 +1,25 @@
+measurement:
+  stage: PR5_training_dynamics
+  observation_only: true
+  source: observed_baseline_run
+
+paths:
+  run_dir: ./outputs/baseline/chair_clean_gaussian_splatting/<run_id>
+
+options:
+  require_success: true
+  allow_missing_tensorboard: true
+
+outputs:
+  training_dynamics_csv: tables/training_dynamics.csv
+  training_artifacts_csv: tables/training_artifacts.csv
+  final_gaussian_summary_csv: tables/final_gaussian_summary.csv
+  summary_json: training_dynamics_summary.json
+
+policy:
+  training_behavior_modified: false
+  third_party_modified: false
+  view_level_metrics_enabled: false
+  gaussian_lifecycle_tracking_enabled: false
+  trust_scoring_enabled: false
+  defense_enabled: false
