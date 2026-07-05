@@ -133,6 +133,13 @@ def main() -> int:
             raise RuntimeError(applied.stderr or applied.stdout)
         if not train_path.with_name("train.py.viewtrust-pr7-backup").exists():
             raise FileNotFoundError("backup was not created")
+        patched_text = train_path.read_text(encoding="utf-8")
+        if "[ViewTrust] Training event observer initialization failed" not in patched_text:
+            raise ValueError("patched trainer does not include visible init failure message")
+        if "[ViewTrust] Training event logging disabled." not in patched_text:
+            raise ValueError("patched trainer does not include disabled logging message")
+        if "VIEWTRUST_OBSERVER_STRICT" not in patched_text:
+            raise ValueError("patched trainer does not include strict observer mode")
 
         check = _run(
             [

@@ -109,7 +109,8 @@ def _viewtrust_pr7_init_observer(dataset, opt, first_iter, scene, gaussians):
     except Exception as exc:
         if os.environ.get("VIEWTRUST_OBSERVER_STRICT") == "1":
             raise
-        print(f"VIEWTRUST PR7 observer disabled during init: {{exc}}")
+        print(f"[ViewTrust] Training event observer initialization failed: {{exc!r}}")
+        print("[ViewTrust] Training event logging disabled.")
         return None
 
 

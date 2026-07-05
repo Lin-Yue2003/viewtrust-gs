@@ -6,6 +6,8 @@ commands but does not import CUDA libraries or modify trainer internals.
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +26,7 @@ class BaselineTrainingConfig:
     sample_interval_s: float
     enable_training_events: bool = False
     training_event_log_interval: int = 10
+    training_event_strict: bool = False
 
 
 def build_baseline_label(scene: str, condition: str, trainer: str) -> str:
@@ -105,12 +108,15 @@ def build_gaussian_splatting_command(
 def build_training_event_env(
     *,
     enabled: bool,
+    project_root: Path,
     run_dir: Path,
     run_id: str,
     scene: str,
     condition: str,
     trainer: str,
     log_interval: int,
+    strict: bool = False,
+    base_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Build opt-in environment variables for PR7 training event observation."""
 
@@ -118,7 +124,19 @@ def build_training_event_env(
         return {}
     if log_interval <= 0:
         raise ValueError("training_event_log_interval must be positive")
-    return {
+    resolved_project_root = project_root.resolve()
+    existing_pythonpath = (base_env or os.environ).get("PYTHONPATH", "")
+    pythonpath_parts = [
+        str(resolved_project_root),
+        *[
+            part
+            for part in existing_pythonpath.split(os.pathsep)
+            if part and part != str(resolved_project_root)
+        ],
+    ]
+    env = {
+        "PYTHONPATH": os.pathsep.join(pythonpath_parts),
+        "VIEWTRUST_PROJECT_ROOT": str(resolved_project_root),
         "VIEWTRUST_ENABLE_TRAINING_EVENTS": "1",
         "VIEWTRUST_TRAINING_EVENTS_DIR": str(run_dir / "training_events"),
         "VIEWTRUST_RUN_ID": run_id,
@@ -128,3 +146,36 @@ def build_training_event_env(
         "VIEWTRUST_OBSERVATION_ONLY": "1",
         "VIEWTRUST_TRAINING_EVENT_LOG_INTERVAL": str(log_interval),
     }
+    if strict:
+        env["VIEWTRUST_OBSERVER_STRICT"] = "1"
+    return env
+
+
+def preflight_training_event_observer_import(
+    *,
+    python_executable: Path,
+    env_overrides: dict[str, str],
+    cwd: Path | None = None,
+    base_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Check that the child trainer environment can import the PR7 observer."""
+
+    child_env = dict(base_env or os.environ)
+    child_env.update(env_overrides)
+    return subprocess.run(
+        [
+            str(python_executable),
+            "-c",
+            (
+                "from viewtrust.observation.training_events import "
+                "TrainingEventObserver, TrainingEventObserverConfig; "
+                "print('observer import ok')"
+            ),
+        ],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=child_env,
+        cwd=str(cwd) if cwd else None,
+    )

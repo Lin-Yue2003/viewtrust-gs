@@ -34,3 +34,11 @@ The observer activates only when:
   VIEWTRUST_ENABLE_TRAINING_EVENTS=1
 
 Otherwise the official trainer should behave as before.
+
+PR7.1 diagnostic behavior:
+
+  - wrapper injects ViewTrust-GS project root into the child trainer PYTHONPATH
+  - wrapper preflights observer import before launching training
+  - VIEWTRUST_OBSERVER_STRICT=1 re-raises observer failures
+  - non-strict observer initialization failures are printed visibly and disable
+    event logging

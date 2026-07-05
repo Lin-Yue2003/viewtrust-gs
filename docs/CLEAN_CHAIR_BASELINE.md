@@ -278,13 +278,21 @@ python scripts/train/run_clean_chair_baseline.py \
   --gpu 0 \
   --sample-interval-s 1.0 \
   --enable-training-events \
-  --training-event-log-interval 10
+  --training-event-log-interval 10 \
+  --training-event-strict
 ```
 
 The flag is off by default. When enabled, the wrapper only sets environment
 variables consumed by the PR7 observation patch; it does not change the
 baseline training command, losses, optimizer, sampling, densification, pruning,
 opacity reset, or rendering decisions.
+
+PR7.1 injects the ViewTrust-GS project root into the child trainer `PYTHONPATH`
+and preflights the observer import before launching training. If that import
+fails, the wrapper exits before training with a clear error. The
+`--training-event-strict` flag sets `VIEWTRUST_OBSERVER_STRICT=1`, so observer
+initialization or logging failures become process errors during server
+validation.
 
 ## Missing Dependency Errors
 

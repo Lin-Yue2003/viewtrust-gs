@@ -177,3 +177,26 @@ bash scripts/env/check_server_environment.sh --require-gaussian-splatting --requ
 
 This patch is opt-in and activates only when the clean baseline wrapper is run
 with `--enable-training-events`.
+
+For PR7.1 server validation, use strict training event mode so child-environment
+observer import issues fail before or during training instead of producing a run
+without event outputs:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition clean \
+  --iterations 500 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10 \
+  --training-event-strict
+```
+
+The wrapper injects the repository root into the trainer child `PYTHONPATH` and
+preflights `viewtrust.observation.training_events` before launching training.

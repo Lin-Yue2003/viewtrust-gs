@@ -20,6 +20,7 @@ training wrapper dry-run smoke test
 training dynamics extraction smoke test
 view render wrapper dry-run smoke test
 view metrics extraction smoke test
+training events child environment smoke test
 training event observer smoke test
 Gaussian Splatting observation patch dry-run/check smoke test
 ```
@@ -39,7 +40,8 @@ It also runs `training_dynamics_extraction_smoke_test.py` on a fake observed run
 with a tiny PLY file.
 It also runs `view_render_wrapper_dry_run_smoke_test.py` and
 `view_metrics_extraction_smoke_test.py` without CUDA.
-It also runs `training_event_observer_smoke_test.py` and
+It also runs `training_events_child_env_smoke_test.py`,
+`training_event_observer_smoke_test.py`, and
 `gaussian_splatting_observation_patch_smoke_test.py` without touching real
 `third_party` source.
 
@@ -103,6 +105,7 @@ render_clean_views.py on a successful clean chair baseline run
 extract_view_metrics.py on rendered train/test/target views
 manual PR7 observation patch application/check
 instrumented clean chair baseline with --enable-training-events
+strict child observer import validation with --training-event-strict
 inspect_training_events.py on the instrumented run
 ```
 
@@ -190,7 +193,8 @@ python scripts/train/run_clean_chair_baseline.py \
   --gpu 0 \
   --sample-interval-s 1.0 \
   --enable-training-events \
-  --training-event-log-interval 10
+  --training-event-log-interval 10 \
+  --training-event-strict
 
 python scripts/measure/inspect_training_events.py \
   --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \

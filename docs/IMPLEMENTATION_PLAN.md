@@ -256,3 +256,9 @@ densification, pruning, opacity reset, or save behavior.
 PR7 does not include per-Gaussian lifecycle IDs, parent-child split/clone
 tracking, view attribution, trust scores, defenses, corruptions, or poisoning.
 Those belong to later PRs.
+
+PR7.1 fixes the server child-process environment for training event logging.
+The clean baseline wrapper injects the project root into the child trainer
+`PYTHONPATH`, preflights the observer import before training, exposes
+`--training-event-strict`, and keeps observer failures visible. It remains
+observation-only and does not change training behavior.

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,12 @@ def main() -> int:
     report = inspect_training_events(args.run_dir)
     print(json.dumps(report, indent=2, sort_keys=True))
     if args.require_events and report["missing_required_paths"]:
+        missing = ", ".join(report["missing_required_paths"])
+        print(
+            "ERROR: training event outputs are required but missing: "
+            f"{missing}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

@@ -70,6 +70,22 @@ VIEWTRUST_ENABLE_TRAINING_EVENTS=1
 The clean baseline wrapper sets this only when
 `--enable-training-events` is passed.
 
+PR7.1 also makes the wrapper inject the ViewTrust-GS project root into the
+child trainer `PYTHONPATH` and run an observer import preflight before training
+starts. If the official trainer child environment cannot import
+`viewtrust.observation.training_events`, the wrapper stops before launching the
+training command.
+
+For stricter validation, pass:
+
+```text
+--training-event-strict
+```
+
+This sets `VIEWTRUST_OBSERVER_STRICT=1` for the child trainer. In strict mode,
+observer import or logging failures raise instead of silently disabling event
+logging.
+
 ## Instrumented Baseline
 
 ```bash
@@ -84,7 +100,8 @@ python scripts/train/run_clean_chair_baseline.py \
   --gpu 0 \
   --sample-interval-s 1.0 \
   --enable-training-events \
-  --training-event-log-interval 10
+  --training-event-log-interval 10 \
+  --training-event-strict
 ```
 
 ## Outputs
@@ -138,6 +155,13 @@ no sampling modification
 no densification condition changes
 no pruning or opacity reset decision changes
 no retained GPU tensor references
+```
+
+Observer initialization failures print:
+
+```text
+[ViewTrust] Training event observer initialization failed: <repr(error)>
+[ViewTrust] Training event logging disabled.
 ```
 
 Logging failures disable the observer by default. Strict failure mode is opt-in:
