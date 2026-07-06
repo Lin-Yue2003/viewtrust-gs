@@ -15,7 +15,13 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _write_run(run_dir: Path, *, observed: bool, invalid_events: bool = False) -> None:
+def _write_run(
+    run_dir: Path,
+    *,
+    observed: bool,
+    invalid_events: bool = False,
+    write_point_cloud: bool = True,
+) -> None:
     run_id = run_dir.name
     _write_json(
         run_dir / "summary.json",
@@ -56,11 +62,22 @@ def _write_run(run_dir: Path, *, observed: bool, invalid_events: bool = False) -
         "1.0,0,Mock GPU,250,1000,20\n",
         encoding="utf-8",
     )
-    point_cloud = run_dir / "trainer_output" / "point_cloud" / "iteration_700" / "point_cloud.ply"
-    point_cloud.parent.mkdir(parents=True, exist_ok=True)
-    point_cloud.write_text("ply\n", encoding="utf-8")
+    if write_point_cloud:
+        point_cloud = (
+            run_dir / "trainer_output" / "point_cloud" / "iteration_700" / "point_cloud.ply"
+        )
+        point_cloud.parent.mkdir(parents=True, exist_ok=True)
+        point_cloud.write_text(
+            "ply\n"
+            "format binary_little_endian 1.0\n"
+            "element vertex 123\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "end_header\n",
+            encoding="utf-8",
+        )
     if not observed:
-        _write_json(run_dir / "training_dynamics_summary.json", {"final_gaussian_count": 92962})
         return
 
     _write_json(
@@ -118,9 +135,11 @@ def main() -> int:
         baseline = tmp_root / "baseline"
         observed = tmp_root / "observed"
         invalid = tmp_root / "invalid"
+        no_count = tmp_root / "no-count"
         _write_run(baseline, observed=False)
         _write_run(observed, observed=True)
         _write_run(invalid, observed=True, invalid_events=True)
+        _write_run(no_count, observed=False, write_point_cloud=False)
 
         output = tmp_root / "report"
         completed = _run_compare(project_root, baseline, observed, output)
@@ -140,10 +159,24 @@ def main() -> int:
             raise ValueError("training event invariants should pass")
         if summary["gaussian_lifecycle_invariants_ok"] is not True:
             raise ValueError("lifecycle invariants should pass")
+        if summary["baseline_final_gaussian_count"] != 123:
+            raise ValueError("baseline final Gaussian count did not use PLY fallback")
+        if summary["final_gaussian_count_delta"] != 92955 - 123:
+            raise ValueError("final Gaussian count delta mismatch")
+        if "baseline run final Gaussian count unavailable" in summary["warnings"]:
+            raise ValueError("PLY fallback should suppress missing count warning")
 
         invalid_completed = _run_compare(project_root, baseline, invalid, tmp_root / "invalid-report")
         if invalid_completed.returncode == 0:
             raise ValueError("invalid observed run should fail invariant requirement")
+
+        no_count_completed = _run_compare(project_root, no_count, observed, tmp_root / "no-count-report")
+        if no_count_completed.returncode == 0:
+            raise ValueError("missing point cloud should fail --require-success")
+        no_count_summary_path = tmp_root / "no-count-report" / "noop_equivalence_summary.json"
+        no_count_summary = json.loads(no_count_summary_path.read_text())
+        if "baseline run final Gaussian count unavailable" not in no_count_summary["warnings"]:
+            raise ValueError("missing PLY/count warning should remain")
 
     print("noop equivalence smoke test ok")
     return 0

@@ -68,9 +68,13 @@ def _requested_iterations(metadata: dict[str, Any], training_events: dict[str, A
 
 
 def _point_cloud_exists(run_dir: Path, requested_iterations: int | None) -> bool:
+    return _find_point_cloud_path(run_dir, requested_iterations) is not None
+
+
+def _find_point_cloud_path(run_dir: Path, requested_iterations: int | None) -> Path | None:
     point_root = run_dir / "trainer_output" / "point_cloud"
     if not point_root.exists():
-        return False
+        return None
     candidates: list[Path] = []
     if requested_iterations is not None:
         candidates.extend(
@@ -81,13 +85,44 @@ def _point_cloud_exists(run_dir: Path, requested_iterations: int | None) -> bool
         )
     candidates.extend(point_root.glob("iteration_*/point_cloud.ply"))
     candidates.extend(point_root.glob("iteration_*.ply"))
-    return any(path.is_file() for path in candidates)
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
 
 
-def _final_gaussian_count(run_dir: Path, training_events: dict[str, Any], lifecycle: dict[str, Any]) -> int | None:
+def read_ply_vertex_count(path: Path) -> int | None:
+    """Read only a PLY header and return the declared vertex count."""
+
+    try:
+        with path.open("rb") as handle:
+            for _ in range(256):
+                raw_line = handle.readline()
+                if not raw_line:
+                    break
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                parts = line.split()
+                if len(parts) == 3 and parts[0] == "element" and parts[1] == "vertex":
+                    return _int_or_none(parts[2])
+                if line == "end_header":
+                    break
+    except OSError:
+        return None
+    return None
+
+
+def _final_gaussian_count(
+    run_dir: Path,
+    summary: dict[str, Any],
+    training_events: dict[str, Any],
+    lifecycle: dict[str, Any],
+    requested_iterations: int | None,
+) -> int | None:
     for value in (
-        lifecycle.get("final_gaussian_count"),
         training_events.get("final_gaussian_count"),
+        lifecycle.get("final_gaussian_count"),
+        summary.get("final_gaussian_count"),
+        summary.get("gaussian_count"),
         _nested(run_dir / "training_dynamics_summary.json").get("final_gaussian_count"),
     ):
         parsed = _int_or_none(value)
@@ -99,6 +134,9 @@ def _final_gaussian_count(run_dir: Path, training_events: dict[str, Any], lifecy
             rows = list(csv.DictReader(handle))
         if rows:
             return _int_or_none(rows[0].get("gaussian_count"))
+    point_cloud_path = _find_point_cloud_path(run_dir, requested_iterations)
+    if point_cloud_path is not None:
+        return read_ply_vertex_count(point_cloud_path)
     return None
 
 
@@ -140,7 +178,13 @@ def _run_info(run_dir: Path) -> dict[str, Any]:
         "elapsed_s": _float_or_none(summary.get("elapsed_s")),
         "observation_only": summary.get("observation_only"),
         "point_cloud_exists": _point_cloud_exists(run_dir, requested_iterations),
-        "final_gaussian_count": _final_gaussian_count(run_dir, training_events, lifecycle),
+        "final_gaussian_count": _final_gaussian_count(
+            run_dir,
+            summary,
+            training_events,
+            lifecycle,
+            requested_iterations,
+        ),
         "gpu_peak_mb": _gpu_peak_mb(run_dir),
         "has_summary": (run_dir / "summary.json").exists(),
         "has_metadata": (run_dir / "metadata.json").exists(),
