@@ -50,6 +50,22 @@ Observed raw chair size on the server was `126M`. The prepared subset uses 20
 train views, 5 test views, 3 target views, and max width 400. If
 `will_resize=true`, resized images are written even when `copy_mode=symlink`.
 
+## Natural Corruption Conditions
+
+After the clean mini chair subset exists, PR10 can generate storage-conscious
+natural corruption conditions under the same scene root:
+
+```text
+docs/NATURAL_CORRUPTIONS.md
+scripts/data/generate_natural_corruptions.py
+scripts/data/generate_default_natural_corruption_suite.py
+scripts/measure/inspect_natural_corruption_dataset.py
+```
+
+These tools do not download data and do not modify training behavior. They
+corrupt selected train views only, keep test and target views unchanged, and
+preserve official Gaussian Splatting extensionless transform paths.
+
 ## Dry Run
 
 Local-safe dry run:

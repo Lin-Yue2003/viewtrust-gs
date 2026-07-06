@@ -29,6 +29,8 @@ Gaussian lifecycle child environment smoke test
 Gaussian Splatting observation patch dry-run/check smoke test
 no-op equivalence smoke test
 Priority 0 report smoke test
+natural corruption generation smoke test with a fake clean mini scene
+natural corruption inspector smoke test with a fake generated condition
 ```
 
 Commands:
@@ -54,8 +56,10 @@ It also runs `training_events_child_env_smoke_test.py`,
 `gaussian_lifecycle_child_env_smoke_test.py`, and
 `gaussian_splatting_observation_patch_smoke_test.py`,
 `noop_equivalence_smoke_test.py`, and `priority0_report_smoke_test.py`
-without touching real
-`third_party` source.
+without touching real `third_party` source. It also runs
+`natural_corruption_generation_smoke_test.py` and
+`natural_corruption_inspector_smoke_test.py` on a tiny fake clean mini scene
+without CUDA.
 
 ## Observed Command Checks
 
@@ -124,6 +128,9 @@ instrumented clean chair baseline with --enable-gaussian-lifecycle
 inspect_gaussian_lifecycle.py on the lifecycle run
 compare_noop_runs.py for uninstrumented vs PR7+PR8 observed runs
 build_priority0_report.py for the observed Priority 0 run
+generating real PR10 natural corruption chair conditions from clean mini data
+inspecting real PR10 natural corruption chair conditions
+future training on clean-vs-corrupt condition pairs
 ```
 
 Command:
@@ -247,6 +254,28 @@ python scripts/measure/build_priority0_report.py \
   --include-gaussian-lifecycle \
   --require-priority0-complete \
   --write-markdown
+```
+
+PR10 natural corruption condition generation is server-required for the real
+chair mini dataset because it reads `$VIEWTRUST_DATA_ROOT`, but the generation
+and inspector code are CPU-only:
+
+```bash
+python scripts/data/generate_default_natural_corruption_suite.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --scene chair \
+  --source-condition clean \
+  --seed 20260706 \
+  --num-corrupt-train-views 4 \
+  --copy-mode symlink \
+  --overwrite
+
+python scripts/measure/inspect_natural_corruption_dataset.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --scene chair \
+  --condition corrupt_occluder \
+  --require-valid \
+  --require-corrupted-count 4
 ```
 
 The PR7.2 inspector sanity check requires:

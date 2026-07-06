@@ -210,6 +210,9 @@ PR4: training-internal Priority 0 logging
 PR5: training dynamics logging from clean baseline runs
 PR6: view-level clean metrics
 PR7: training event and densification dynamics logging
+PR8: Gaussian lifecycle logging
+PR9: no-op equivalence and Priority 0 report
+PR10: natural corruption condition generation
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -280,3 +283,12 @@ comparison and reporting scripts. It compares uninstrumented and PR7+PR8
 observed clean runs with tolerance-based gross-deviation checks, then
 consolidates Priority 0 artifacts into JSON, CSV, and Markdown reports. It does
 not claim bitwise determinism and does not add training interventions.
+
+PR10 Natural Corruption Condition Generation creates CPU-only tooling for
+storage-conscious NeRF Synthetic chair corrupt conditions:
+`corrupt_occluder`, `corrupt_blur`, `corrupt_exposure`,
+`corrupt_color_shift`, `corrupt_noise`, and `corrupt_mixed`. It corrupts only
+selected train views by default, keeps test and target views unchanged,
+preserves extensionless official Gaussian Splatting transform paths, and writes
+condition manifests, summaries, CSV tables, and preview grids. It does not add
+poisoning, trust scores, defenses, or training-time interventions.

@@ -44,3 +44,13 @@ description
 PR9 does not add trust scores, defenses, poison detection, corruption
 conditions, or training-time intervention. It consolidates Priority 0 artifacts
 so later clean/corrupt/poison comparisons have a stable baseline report.
+
+## PR10 Context
+
+PR10 adds natural corruption condition generation as input preparation for
+future clean-vs-corrupt observation runs. The generated condition manifests and
+inspection summaries are dataset artifacts, not training interventions.
+
+Future report extensions can reference PR10 condition summaries when comparing
+clean and corrupt runs. PR10 itself does not modify the PR9 no-op equivalence
+report, training observers, or trainer behavior.
