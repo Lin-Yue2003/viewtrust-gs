@@ -21,6 +21,8 @@ python scripts/smoke/gaussian_lifecycle_observer_smoke_test.py
 python scripts/smoke/gaussian_lifecycle_invariant_smoke_test.py
 python scripts/smoke/gaussian_lifecycle_child_env_smoke_test.py
 python scripts/smoke/gaussian_splatting_observation_patch_smoke_test.py
+python scripts/smoke/noop_equivalence_smoke_test.py
+python scripts/smoke/priority0_report_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"

@@ -205,3 +205,6 @@ or clone/split parent-child relationships. That belongs to PR8.
 
 PR8 preserves these PR7 outputs and adds separate Gaussian lifecycle outputs
 under `gaussian_lifecycle/` and `tables/gaussian_lifecycle_*.csv`.
+
+PR9 consumes PR7 summaries and tables for no-op equivalence checks and the
+Priority 0 report. It does not change PR7 logging behavior.

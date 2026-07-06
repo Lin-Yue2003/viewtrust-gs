@@ -27,6 +27,8 @@ Gaussian lifecycle observer smoke test
 Gaussian lifecycle invariant inspector smoke test
 Gaussian lifecycle child environment smoke test
 Gaussian Splatting observation patch dry-run/check smoke test
+no-op equivalence smoke test
+Priority 0 report smoke test
 ```
 
 Commands:
@@ -50,7 +52,9 @@ It also runs `training_events_child_env_smoke_test.py`,
 `gaussian_lifecycle_observer_smoke_test.py`,
 `gaussian_lifecycle_invariant_smoke_test.py`,
 `gaussian_lifecycle_child_env_smoke_test.py`, and
-`gaussian_splatting_observation_patch_smoke_test.py` without touching real
+`gaussian_splatting_observation_patch_smoke_test.py`,
+`noop_equivalence_smoke_test.py`, and `priority0_report_smoke_test.py`
+without touching real
 `third_party` source.
 
 ## Observed Command Checks
@@ -118,6 +122,8 @@ inspect_training_events.py on the instrumented run
 training event scalar sanity validation
 instrumented clean chair baseline with --enable-gaussian-lifecycle
 inspect_gaussian_lifecycle.py on the lifecycle run
+compare_noop_runs.py for uninstrumented vs PR7+PR8 observed runs
+build_priority0_report.py for the observed Priority 0 run
 ```
 
 Command:
@@ -224,6 +230,23 @@ python scripts/measure/inspect_gaussian_lifecycle.py \
   --run-dir outputs/baseline/chair_clean_gaussian_splatting/<run_id> \
   --require-lifecycle \
   --require-no-invariant-violations
+
+python scripts/measure/compare_noop_runs.py \
+  --baseline-run-dir "$BASELINE_RUN_DIR" \
+  --observed-run-dir "$OBSERVED_RUN_DIR" \
+  --output-dir outputs/reports/priority0_noop_$(date +%Y%m%dT%H%M%S) \
+  --require-success \
+  --require-observation-invariants \
+  --write-markdown
+
+python scripts/measure/build_priority0_report.py \
+  --run-dir "$OBSERVED_RUN_DIR" \
+  --output-dir outputs/reports/priority0_report_$(date +%Y%m%dT%H%M%S) \
+  --include-view-metrics \
+  --include-training-events \
+  --include-gaussian-lifecycle \
+  --require-priority0-complete \
+  --write-markdown
 ```
 
 The PR7.2 inspector sanity check requires:

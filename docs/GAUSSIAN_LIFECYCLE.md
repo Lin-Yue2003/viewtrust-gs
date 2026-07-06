@@ -121,3 +121,6 @@ source mask at the hook point. If exact mapping is unavailable, new Gaussians
 receive unique IDs with `birth_type=densification_unknown` and an explicit
 warning. PR8 does not implement trust scores, view attribution, poison
 detection, or defenses.
+
+PR9 consumes lifecycle summaries and tables for no-op equivalence checks and
+the Priority 0 report. It does not change lifecycle logging behavior.

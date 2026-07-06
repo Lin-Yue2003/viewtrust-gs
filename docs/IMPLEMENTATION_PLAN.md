@@ -274,3 +274,9 @@ IDs, clone/split/prune observation hooks, final lifecycle tables, lifecycle
 summary inspection, and invariant checks. It is a separate patch applied after
 PR7 training events so an existing PR7-patched server checkout can be upgraded
 without restoring the trainer. It remains strictly observation-only.
+
+PR9 No-op Equivalence and Priority 0 Observation Report adds read-only
+comparison and reporting scripts. It compares uninstrumented and PR7+PR8
+observed clean runs with tolerance-based gross-deviation checks, then
+consolidates Priority 0 artifacts into JSON, CSV, and Markdown reports. It does
+not claim bitwise determinism and does not add training interventions.
