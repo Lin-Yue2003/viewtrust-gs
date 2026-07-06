@@ -71,6 +71,8 @@ def main() -> int:
         report = json.loads(ok.stdout)
         if report["valid"] is not True:
             raise ValueError("inspector should report valid")
+        if report["has_manifest"] is not True:
+            raise ValueError("inspector should validate manifest.json")
         if report["test_target_uncorrupted"] is not True:
             raise ValueError("test/target should remain uncorrupted")
         if report["all_transform_images_exist"] is not True:
@@ -93,6 +95,31 @@ def main() -> int:
         )
         if wrong_count.returncode == 0:
             raise ValueError("wrong corrupted count should fail")
+
+        manifest_path = (
+            data_root
+            / "viewtrust-mini"
+            / "nerf_synthetic"
+            / "chair"
+            / "corrupt_occluder"
+            / "manifest.json"
+        )
+        manifest_path.unlink()
+        missing_manifest = _run(
+            [
+                sys.executable,
+                str(inspect_script),
+                "--data-root",
+                str(data_root),
+                "--scene",
+                "chair",
+                "--condition",
+                "corrupt_occluder",
+                "--require-valid",
+            ]
+        )
+        if missing_manifest.returncode == 0:
+            raise ValueError("missing manifest.json should fail under --require-valid")
 
     print("natural corruption inspector smoke test ok")
     return 0

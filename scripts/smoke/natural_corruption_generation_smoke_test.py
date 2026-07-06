@@ -107,6 +107,7 @@ def main() -> int:
                 raise RuntimeError(completed.stderr or completed.stdout)
             root = data_root / "viewtrust-mini" / "nerf_synthetic" / "chair" / condition
             for name in (
+                "manifest.json",
                 "corruption_manifest.json",
                 "corruption_manifest.csv",
                 "corruption_summary.json",
@@ -114,6 +115,13 @@ def main() -> int:
             ):
                 if not (root / name).exists():
                     raise FileNotFoundError(root / name)
+            training_manifest = json.loads((root / "manifest.json").read_text())
+            if training_manifest["schema_name"] != "viewtrust.nerf_synthetic_subset.manifest":
+                raise ValueError("training-compatible manifest schema mismatch")
+            if training_manifest["condition"] != condition:
+                raise ValueError("training-compatible manifest condition mismatch")
+            if training_manifest["condition_type"] != "natural_corruption":
+                raise ValueError("training-compatible manifest condition_type mismatch")
             summary = json.loads((root / "corruption_summary.json").read_text())
             if summary["corrupted_image_count"] != 2:
                 raise ValueError("corrupted_image_count mismatch")

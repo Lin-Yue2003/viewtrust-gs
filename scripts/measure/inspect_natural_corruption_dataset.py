@@ -46,6 +46,7 @@ def inspect_condition(data_root: Path, scene: str, condition: str) -> dict[str, 
     train_path = condition_path / "transforms_train.json"
     test_path = condition_path / "transforms_test.json"
     target_path = condition_path / "transforms_target.json"
+    manifest_path = condition_path / "manifest.json"
     manifest_json = condition_path / "corruption_manifest.json"
     manifest_csv = condition_path / "corruption_manifest.csv"
     summary_json = condition_path / "corruption_summary.json"
@@ -79,6 +80,7 @@ def inspect_condition(data_root: Path, scene: str, condition: str) -> dict[str, 
         "has_transforms_train": train_path.exists(),
         "has_transforms_test": test_path.exists(),
         "has_transforms_target": target_path.exists(),
+        "has_manifest": manifest_path.exists(),
         "has_manifest_json": manifest_json.exists(),
         "has_manifest_csv": manifest_csv.exists(),
         "has_summary_json": summary_json.exists(),

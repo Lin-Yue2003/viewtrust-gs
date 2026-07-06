@@ -31,6 +31,7 @@ no-op equivalence smoke test
 Priority 0 report smoke test
 natural corruption generation smoke test with a fake clean mini scene
 natural corruption inspector smoke test with a fake generated condition
+clean-vs-corrupt comparison smoke test with fake observed runs
 ```
 
 Commands:
@@ -59,7 +60,9 @@ It also runs `training_events_child_env_smoke_test.py`,
 without touching real `third_party` source. It also runs
 `natural_corruption_generation_smoke_test.py` and
 `natural_corruption_inspector_smoke_test.py` on a tiny fake clean mini scene
-without CUDA.
+without CUDA. It also runs `clean_vs_corrupt_comparison_smoke_test.py`, which
+checks PR10.1 manifest compatibility and PR11 comparison outputs with fake
+observed clean/corrupt runs.
 
 ## Observed Command Checks
 
@@ -130,7 +133,9 @@ compare_noop_runs.py for uninstrumented vs PR7+PR8 observed runs
 build_priority0_report.py for the observed Priority 0 run
 generating real PR10 natural corruption chair conditions from clean mini data
 inspecting real PR10 natural corruption chair conditions
-future training on clean-vs-corrupt condition pairs
+training a natural corruption chair condition
+compare_clean_corrupt_observations.py for clean vs natural-corrupt observed runs
+future multi-condition clean-vs-corrupt suites
 ```
 
 Command:
@@ -276,6 +281,34 @@ python scripts/measure/inspect_natural_corruption_dataset.py \
   --condition corrupt_occluder \
   --require-valid \
   --require-corrupted-count 4
+```
+
+PR11 clean-vs-corrupt validation starts with `corrupt_occluder`:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition corrupt_occluder \
+  --iterations 700 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10 \
+  --training-event-strict \
+  --enable-gaussian-lifecycle \
+  --gaussian-lifecycle-strict
+
+python scripts/measure/compare_clean_corrupt_observations.py \
+  --clean-run-dir "$CLEAN_RUN_DIR" \
+  --corrupt-run-dir "$CORRUPT_RUN_DIR" \
+  --corruption-condition corrupt_occluder \
+  --output-dir outputs/reports/clean_vs_corrupt_occluder_$(date +%Y%m%dT%H%M%S) \
+  --require-observation-invariants \
+  --write-markdown
 ```
 
 The PR7.2 inspector sanity check requires:

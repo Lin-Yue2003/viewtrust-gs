@@ -1,7 +1,8 @@
 # Clean Chair Baseline
 
-PR3 creates a clean chair baseline wrapper for the prepared NeRF Synthetic mini
-subset.
+PR3 creates a chair baseline wrapper for prepared NeRF Synthetic mini
+conditions. The first validated condition was `clean`; PR11 also uses the same
+wrapper for natural corruption conditions such as `corrupt_occluder`.
 
 This is still observation-only. It does not modify training internals, edit
 third-party code, enable ViewTrust scoring, add defenses, or gate
@@ -19,6 +20,10 @@ $VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair/clean/
   manifest.json
   images/
 ```
+
+For natural corruption runs, replace `clean` with a generated condition such as
+`corrupt_occluder`. PR10.1 writes a training-compatible `manifest.json` for
+each generated natural corruption condition.
 
 Preferred trainer, if available:
 
@@ -145,6 +150,26 @@ python scripts/train/run_clean_chair_baseline.py \
 ```
 
 The wrapper sets `CUDA_VISIBLE_DEVICES` for the observed child process.
+
+To run a natural corruption condition without changing training behavior:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --trainer gaussian-splatting \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --output-root ./outputs \
+  --scene chair \
+  --condition corrupt_occluder \
+  --iterations 700 \
+  --gpu 0 \
+  --sample-interval-s 1.0 \
+  --enable-training-events \
+  --training-event-log-interval 10 \
+  --training-event-strict \
+  --enable-gaussian-lifecycle \
+  --gaussian-lifecycle-strict
+```
 
 ## Expected Output
 

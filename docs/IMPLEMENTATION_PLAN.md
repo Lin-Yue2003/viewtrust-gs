@@ -213,6 +213,7 @@ PR7: training event and densification dynamics logging
 PR8: Gaussian lifecycle logging
 PR9: no-op equivalence and Priority 0 report
 PR10: natural corruption condition generation
+PR11: clean-vs-corrupt observation comparison
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -292,3 +293,14 @@ selected train views by default, keeps test and target views unchanged,
 preserves extensionless official Gaussian Splatting transform paths, and writes
 condition manifests, summaries, CSV tables, and preview grids. It does not add
 poisoning, trust scores, defenses, or training-time interventions.
+
+PR10.1 makes generated natural corruption conditions directly compatible with
+the existing baseline wrapper by writing `manifest.json` with the
+`viewtrust.nerf_synthetic_subset.manifest` schema.
+
+PR11 Clean-vs-Corrupt Observation Comparison compares a clean observed run with
+a natural corruption observed run using existing PR7 training events, PR8
+Gaussian lifecycle logs, and optional PR6 view metrics. It writes JSON, CSV,
+artifact manifest, and Markdown reports. It does not detect corruption,
+classify trust, implement a ViewTrust score, implement a defense, or change
+training behavior.

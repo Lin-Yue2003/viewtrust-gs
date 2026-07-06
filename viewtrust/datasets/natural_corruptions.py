@@ -15,6 +15,7 @@ from typing import Any
 
 NATURAL_CORRUPTION_MANIFEST_SCHEMA = "viewtrust.natural_corruption.manifest"
 NATURAL_CORRUPTION_SUMMARY_SCHEMA = "viewtrust.natural_corruption.summary"
+TRAINING_COMPAT_MANIFEST_SCHEMA = "viewtrust.nerf_synthetic_subset.manifest"
 NATURAL_CORRUPTION_SCHEMA_VERSION = 1
 SUPPORTED_CORRUPTIONS = {"occluder", "blur", "exposure", "color_shift", "noise", "mixed"}
 SUPPORTED_COPY_MODES = {"copy", "symlink"}
@@ -446,7 +447,37 @@ def generate_natural_corruption_condition(
         "transforms_extensionless_file_path": transforms_extensionless,
         "warnings": [],
     }
+    training_manifest = {
+        "schema_name": TRAINING_COMPAT_MANIFEST_SCHEMA,
+        "schema_version": 1,
+        "source_dataset": "nerf_synthetic",
+        "source_scene": scene,
+        "scene": scene,
+        "condition": output_condition,
+        "source_condition": source_condition,
+        "condition_type": "natural_corruption",
+        "seed": seed,
+        "train_view_count": len(train_frames),
+        "test_view_count": len(test_frames),
+        "target_view_count": len(target_frames),
+        "total_view_count": len(rows),
+        "selected_train_view_count": len(selected),
+        "selected_train_views": selected,
+        "corrupted_image_count": len(corruptions),
+        "uncorrupted_image_count": len(uncorrupted),
+        "corruption_type": corruption_type,
+        "copy_mode": copy_mode,
+        "corruption_manifest": "corruption_manifest.json",
+        "corruption_summary": "corruption_summary.json",
+        "transforms_extensionless_file_path": transforms_extensionless,
+        "created_at_utc": manifest["created_at_utc"],
+        "notes": [
+            "PR10 natural corruption condition generated from a clean mini scene.",
+            "This manifest is training-wrapper compatible and does not imply a defense or trust score.",
+        ],
+    }
     _write_json(output_root / "corruption_manifest.json", manifest)
     _write_json(output_root / "corruption_summary.json", summary)
+    _write_json(output_root / "manifest.json", training_manifest)
     _write_preview(rows, output_root / "preview" / "preview_grid.png", preview_count)
     return summary

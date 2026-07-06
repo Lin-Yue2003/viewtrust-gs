@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a clean chair baseline through Priority 0 observed-command logging."""
+"""Run a prepared chair condition through Priority 0 observed-command logging."""
 
 from __future__ import annotations
 
@@ -128,7 +128,7 @@ def main() -> int:
         validate_prepared_scene(prepared_scene_root)
         trainer_path = resolve_trainer_path(config.trainer, config.third_party_root)
     except (FileNotFoundError, ValueError) as exc:
-        print("ERROR: Clean chair baseline preflight failed.", file=sys.stderr)
+        print("ERROR: Prepared scene baseline preflight failed.", file=sys.stderr)
         print("", file=sys.stderr)
         print(str(exc), file=sys.stderr)
         return 2
@@ -250,7 +250,7 @@ def main() -> int:
     print(json.dumps(dry_run_report, indent=2, sort_keys=True))
 
     if args.dry_run:
-        print("clean chair baseline dry-run ok")
+        print("prepared chair baseline dry-run ok")
         return 0
 
     logger = Priority0Logger(run_dir=run_dir, run_id=run_id)
@@ -267,7 +267,7 @@ def main() -> int:
         },
         metadata_extra=metadata,
     )
-    print(f"clean chair baseline run_dir: {result.run_dir}")
+    print(f"prepared chair baseline run_dir: {result.run_dir}")
     print(f"returncode: {result.returncode}")
     print(f"elapsed_s: {result.elapsed_s:.6f}")
     return result.returncode

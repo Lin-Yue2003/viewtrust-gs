@@ -54,3 +54,30 @@ inspection summaries are dataset artifacts, not training interventions.
 Future report extensions can reference PR10 condition summaries when comparing
 clean and corrupt runs. PR10 itself does not modify the PR9 no-op equivalence
 report, training observers, or trainer behavior.
+
+## PR11 Clean-vs-Corrupt Reports
+
+PR11 adds a separate comparison report:
+
+```bash
+python scripts/measure/compare_clean_corrupt_observations.py \
+  --clean-run-dir "$CLEAN_RUN_DIR" \
+  --corrupt-run-dir "$CORRUPT_RUN_DIR" \
+  --corruption-condition corrupt_occluder \
+  --output-dir outputs/reports/clean_vs_corrupt_occluder_$(date +%Y%m%dT%H%M%S) \
+  --require-observation-invariants \
+  --write-markdown
+```
+
+Outputs:
+
+```text
+clean_vs_corrupt_summary.json
+clean_vs_corrupt_report.md
+clean_vs_corrupt_metrics.csv
+clean_vs_corrupt_artifact_manifest.csv
+```
+
+This report compares natural corruption observations against clean training.
+It does not claim detection, does not classify views, and does not implement a
+trust score or defense.

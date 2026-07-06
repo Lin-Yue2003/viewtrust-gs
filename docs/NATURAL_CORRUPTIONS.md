@@ -64,6 +64,7 @@ $VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair/<condition>/
   transforms_train.json
   transforms_test.json
   transforms_target.json
+  manifest.json
   corruption_manifest.json
   corruption_manifest.csv
   corruption_summary.json
@@ -72,6 +73,10 @@ $VIEWTRUST_DATA_ROOT/viewtrust-mini/nerf_synthetic/chair/<condition>/
 
 The transform files are copied from the clean condition so camera metadata and
 extensionless `file_path` entries are preserved.
+
+`manifest.json` uses the existing
+`viewtrust.nerf_synthetic_subset.manifest` schema so the baseline training
+wrapper can run natural corruption conditions directly.
 
 ## Storage Policy
 
@@ -137,8 +142,31 @@ python scripts/measure/inspect_natural_corruption_dataset.py \
 
 The inspector checks that transform images exist, transform paths are
 extensionless, test and target views are uncorrupted, selected train views are
-valid, manifests exist, summaries exist, and the preview grid exists when
+valid, `manifest.json` exists, corruption manifests exist, summaries exist, and the preview grid exists when
 requested.
+
+## PR10.1 Training Compatibility
+
+Natural corruption conditions are generated from the clean mini scene but are
+still prepared scene roots. Each generated condition writes:
+
+```text
+manifest.json
+```
+
+This file records the condition name, source condition, natural corruption
+type, train/test/target counts, corrupted image count, and links to
+`corruption_manifest.json` and `corruption_summary.json`.
+
+Because of this compatibility manifest, the existing baseline wrapper can run:
+
+```bash
+python scripts/train/run_clean_chair_baseline.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --third-party-root ./third_party \
+  --scene chair \
+  --condition corrupt_occluder
+```
 
 ## Why Natural Corruption First
 
