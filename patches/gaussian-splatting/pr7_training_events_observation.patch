@@ -50,6 +50,16 @@ PR7.2 data correctness behavior:
   - requested_iterations=opt.iterations is passed to the observer summary
   - patch checks require the corrected visibility extraction
 
+PR11.1 scalar timing consistency behavior:
+
+  - iteration_metrics captures gaussian_count immediately after render outputs
+    are available
+  - render-time radii, visibility, gradients, and gaussian_count are logged
+    from the same pre-densification/pre-pruning snapshot
+  - post-prune counts remain in densification_events.csv as
+    gaussian_count_before / gaussian_count_after / gaussian_count_delta
+  - patch checks require viewtrust_gaussian_count_render
+
 PR8 lifecycle note:
 
   - PR8 is now applied as a separate pr8_gaussian_lifecycle patch

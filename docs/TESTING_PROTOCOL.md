@@ -311,13 +311,19 @@ python scripts/measure/compare_clean_corrupt_observations.py \
   --write-markdown
 ```
 
-The PR7.2 inspector sanity check requires:
+The PR7.2/PR11.1 inspector sanity check requires:
 
 ```text
 0 <= visible_gaussian_count <= gaussian_count
 0 <= visibility_ratio <= 1
 0 <= radii_nonzero_count <= gaussian_count
+densification gaussian_count_after >= 0
+densification gaussian_count_delta == gaussian_count_after - gaussian_count_before
 ```
+
+For `iteration_metrics`, `gaussian_count` is the render-time/pre-prune count,
+not the post-densification count. Post-prune counts belong in
+`densification_events.csv`.
 
 PR8 lifecycle validation requires:
 

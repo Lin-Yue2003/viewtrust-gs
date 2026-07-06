@@ -45,17 +45,20 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
             "max_visible_gaussian_count": None,
             "max_visibility_ratio": None,
             "max_gaussian_count": None,
+            "max_radii_nonzero_count": None,
         }
 
     invalid_rows = 0
     max_visible: int | None = None
     max_ratio: float | None = None
     max_gaussian: int | None = None
+    max_radii_nonzero: int | None = None
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             gaussian_count = _int_or_none(row.get("gaussian_count"))
             visible_count = _int_or_none(row.get("visible_gaussian_count"))
             visibility_ratio = _float_or_none(row.get("visibility_ratio"))
+            radii_nonzero_count = _int_or_none(row.get("radii_nonzero_count"))
             row_invalid = row.get("status") == "invalid"
             if gaussian_count is not None:
                 max_gaussian = (
@@ -81,10 +84,24 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
                 )
                 if visibility_ratio < 0 or visibility_ratio > 1:
                     row_invalid = True
+            if radii_nonzero_count is not None:
+                max_radii_nonzero = (
+                    radii_nonzero_count
+                    if max_radii_nonzero is None
+                    else max(max_radii_nonzero, radii_nonzero_count)
+                )
+                if radii_nonzero_count < 0:
+                    row_invalid = True
             if (
                 gaussian_count is not None
                 and visible_count is not None
                 and visible_count > gaussian_count
+            ):
+                row_invalid = True
+            if (
+                gaussian_count is not None
+                and radii_nonzero_count is not None
+                and radii_nonzero_count > gaussian_count
             ):
                 row_invalid = True
             if row_invalid:
@@ -95,6 +112,30 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
         "max_visible_gaussian_count": max_visible,
         "max_visibility_ratio": max_ratio,
         "max_gaussian_count": max_gaussian,
+        "max_radii_nonzero_count": max_radii_nonzero,
+    }
+
+
+def _densification_event_sanity(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"invalid_densification_event_rows": None}
+    invalid_rows = 0
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            before = _int_or_none(row.get("gaussian_count_before"))
+            after = _int_or_none(row.get("gaussian_count_after"))
+            delta = _int_or_none(row.get("gaussian_count_delta"))
+            row_invalid = row.get("status") == "invalid"
+            if after is not None and after < 0:
+                row_invalid = True
+            if before is not None and before < 0:
+                row_invalid = True
+            if before is not None and after is not None and delta != after - before:
+                row_invalid = True
+            if row_invalid:
+                invalid_rows += 1
+    return {
+        "invalid_densification_event_rows": invalid_rows,
     }
 
 
@@ -116,6 +157,7 @@ def inspect_training_events(run_dir: Path) -> dict[str, Any]:
     ]
     summary = _json_file(summary_path) if summary_path.exists() else {}
     sanity = _training_event_sanity(training_events_csv)
+    densification_sanity = _densification_event_sanity(densification_events_csv)
     summary_invalid_rows = _int_or_none(summary.get("invalid_training_event_rows"))
     sanity_invalid_rows = sanity["invalid_training_event_rows"]
     invalid_training_event_rows = (
@@ -141,9 +183,13 @@ def inspect_training_events(run_dir: Path) -> dict[str, Any]:
         "requested_iterations": summary.get("requested_iterations"),
         "logged_iteration_count": summary.get("logged_iteration_count"),
         "invalid_training_event_rows": invalid_training_event_rows,
+        "invalid_densification_event_rows": densification_sanity[
+            "invalid_densification_event_rows"
+        ],
         "max_visible_gaussian_count": sanity["max_visible_gaussian_count"],
         "max_visibility_ratio": sanity["max_visibility_ratio"],
         "max_gaussian_count": sanity["max_gaussian_count"],
+        "max_radii_nonzero_count": sanity["max_radii_nonzero_count"],
         "densification_trigger_count": summary.get("densification_trigger_count"),
         "initial_gaussian_count": summary.get("initial_gaussian_count"),
         "final_gaussian_count": summary.get("final_gaussian_count"),
@@ -175,6 +221,13 @@ def main() -> int:
         print(
             "ERROR: training event outputs contain invalid scalar rows: "
             f"{report['invalid_training_event_rows']}",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_events and report["invalid_densification_event_rows"]:
+        print(
+            "ERROR: densification event outputs contain invalid scalar rows: "
+            f"{report['invalid_densification_event_rows']}",
             file=sys.stderr,
         )
         return 1

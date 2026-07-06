@@ -273,6 +273,11 @@ rows are sanity-checked, summaries distinguish `requested_iterations` from
 `logged_iteration_count`, and `inspect_training_events.py --require-events`
 fails on impossible scalar rows. It remains observation-only.
 
+PR11.1 fixes training event scalar timing consistency for densification/pruning
+iterations. `iteration_metrics.gaussian_count` now records the render-time
+pre-densification count used by visibility and radii stats, while post-prune
+counts remain in densification event rows. It remains observation-only.
+
 PR8 Gaussian Lifecycle Logging adds non-trainable per-run Gaussian lifecycle
 IDs, clone/split/prune observation hooks, final lifecycle tables, lifecycle
 summary inspection, and invariant checks. It is a separate patch applied after

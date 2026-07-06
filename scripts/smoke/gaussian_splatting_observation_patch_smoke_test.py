@@ -234,6 +234,12 @@ def main() -> int:
             raise ValueError("patched trainer does not include disabled logging message")
         if "VIEWTRUST_OBSERVER_STRICT" not in patched_text:
             raise ValueError("patched trainer does not include strict observer mode")
+        if "viewtrust_gaussian_count_render = _viewtrust_pr7_count_gaussians(gaussians)" not in patched_text:
+            raise ValueError("patched trainer does not capture render-time Gaussian count")
+        if "gaussian_count=viewtrust_gaussian_count_render" not in patched_text:
+            raise ValueError("patched trainer does not use render-time count for iteration metrics")
+        if 'stage="after_render"' not in patched_text:
+            raise ValueError("patched trainer does not log after_render Gaussian count stage")
 
         check = _run(
             [

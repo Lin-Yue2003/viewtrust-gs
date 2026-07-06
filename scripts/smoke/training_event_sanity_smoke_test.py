@@ -19,18 +19,32 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]])
         writer.writerows(rows)
 
 
-def _write_run(run_dir: Path, *, invalid: bool) -> None:
+def _write_run(run_dir: Path, *, invalid: bool, timing_case: bool = False) -> None:
     (run_dir / "tables").mkdir(parents=True)
-    training_rows = [
-        {
-            "iteration": 1,
-            "event_type": "iteration_metrics",
-            "gaussian_count": 100,
-            "visible_gaussian_count": 25 if not invalid else 125,
-            "visibility_ratio": 0.25 if not invalid else 1.25,
-            "status": "ok",
-        }
-    ]
+    if timing_case:
+        training_rows = [
+            {
+                "iteration": 600,
+                "event_type": "iteration_metrics",
+                "gaussian_count": 30656 if invalid else 100000,
+                "visible_gaussian_count": 92000 if not invalid else "",
+                "visibility_ratio": 0.92 if not invalid else "",
+                "radii_nonzero_count": 92131,
+                "status": "ok",
+            }
+        ]
+    else:
+        training_rows = [
+            {
+                "iteration": 1,
+                "event_type": "iteration_metrics",
+                "gaussian_count": 100,
+                "visible_gaussian_count": 25 if not invalid else 125,
+                "visibility_ratio": 0.25 if not invalid else 1.25,
+                "radii_nonzero_count": 25 if not invalid else 125,
+                "status": "ok",
+            }
+        ]
     _write_csv(
         run_dir / "tables" / "training_events.csv",
         [
@@ -39,14 +53,31 @@ def _write_run(run_dir: Path, *, invalid: bool) -> None:
             "gaussian_count",
             "visible_gaussian_count",
             "visibility_ratio",
+            "radii_nonzero_count",
             "status",
         ],
         training_rows,
     )
     _write_csv(
         run_dir / "tables" / "densification_events.csv",
-        ["iteration", "status"],
-        [],
+        [
+            "iteration",
+            "gaussian_count_before",
+            "gaussian_count_after",
+            "gaussian_count_delta",
+            "status",
+        ],
+        [
+            {
+                "iteration": 600,
+                "gaussian_count_before": 100000,
+                "gaussian_count_after": 30656,
+                "gaussian_count_delta": -69344,
+                "status": "ok",
+            }
+        ]
+        if timing_case
+        else [],
     )
     _write_csv(
         run_dir / "tables" / "gaussian_count_timeseries.csv",
@@ -90,8 +121,12 @@ def main() -> int:
         tmp_root = Path(tmp)
         valid_run = tmp_root / "valid"
         invalid_run = tmp_root / "invalid"
+        timing_valid_run = tmp_root / "timing-valid"
+        timing_invalid_run = tmp_root / "timing-invalid"
         _write_run(valid_run, invalid=False)
         _write_run(invalid_run, invalid=True)
+        _write_run(timing_valid_run, invalid=False, timing_case=True)
+        _write_run(timing_invalid_run, invalid=True, timing_case=True)
 
         valid = _run_inspector(project_root, valid_run)
         if valid.returncode != 0:
@@ -108,6 +143,26 @@ def main() -> int:
             raise ValueError("invalid row count was not detected")
         if "invalid scalar rows" not in invalid.stderr:
             raise ValueError("invalid sanity failure did not print a clear error")
+
+        timing_valid = _run_inspector(project_root, timing_valid_run)
+        if timing_valid.returncode != 0:
+            raise RuntimeError(timing_valid.stderr or timing_valid.stdout)
+        timing_valid_report = json.loads(timing_valid.stdout)
+        if timing_valid_report["invalid_training_event_rows"] != 0:
+            raise ValueError("render-time timing case should be valid")
+        if timing_valid_report["max_gaussian_count"] != 100000:
+            raise ValueError("render-time gaussian count was not used for sanity")
+        if timing_valid_report["max_radii_nonzero_count"] != 92131:
+            raise ValueError("radii_nonzero_count was not inspected")
+        if timing_valid_report["invalid_densification_event_rows"] != 0:
+            raise ValueError("valid densification before/after/delta row failed")
+
+        timing_invalid = _run_inspector(project_root, timing_invalid_run)
+        if timing_invalid.returncode == 0:
+            raise ValueError("old post-prune gaussian_count timing case should fail")
+        timing_invalid_report = json.loads(timing_invalid.stdout)
+        if timing_invalid_report["invalid_training_event_rows"] != 1:
+            raise ValueError("old timing mismatch invalid row was not detected")
 
     print("training event sanity smoke test ok")
     return 0

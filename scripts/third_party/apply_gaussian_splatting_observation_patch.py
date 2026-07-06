@@ -263,6 +263,17 @@ def apply_patch_text(text: str) -> str:
         raise ValueError("training_report anchor not found")
     text = text.replace(original_report, replacement_report, 1)
 
+    render_outputs_line = (
+        '        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]\n'
+    )
+    render_snapshot = (
+        f"        {START}\n"
+        "        viewtrust_gaussian_count_render = _viewtrust_pr7_count_gaussians(gaussians)\n"
+        "        _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"after_render\", gaussian_count=viewtrust_gaussian_count_render)\n"
+        f"        {END}\n"
+    )
+    text = _insert_after(text, render_outputs_line, render_snapshot)
+
     save_block = (
         "            if (iteration in saving_iterations):\n"
         "                print(\"\\n[ITER {}] Saving Gaussians\".format(iteration))\n"
@@ -326,12 +337,11 @@ def apply_patch_text(text: str) -> str:
     optimizer_header = "            # Optimizer step\n"
     metrics_patch = (
         f"            {START}\n"
-        "            viewtrust_gaussian_count = _viewtrust_pr7_count_gaussians(gaussians)\n"
-        "            viewtrust_visibility_stats = _viewtrust_pr7_visibility_stats(visibility_filter, viewtrust_gaussian_count)\n"
+        "            viewtrust_visibility_stats = _viewtrust_pr7_visibility_stats(visibility_filter, viewtrust_gaussian_count_render)\n"
         "            viewtrust_radii_stats = _viewtrust_pr7_radii_stats(radii)\n"
         "            viewtrust_grad_stats = _viewtrust_pr7_grad_stats(viewspace_point_tensor)\n"
-        "            _viewtrust_pr7_call(viewtrust_observer, \"log_iteration_metrics\", iteration=iteration, event_type=\"iteration_metrics\", camera_index=vind, camera_image_name=_viewtrust_pr7_camera_name(viewpoint_cam), loss=_viewtrust_pr7_scalar(loss), l1_loss=_viewtrust_pr7_scalar(Ll1), ssim=_viewtrust_pr7_scalar(ssim_value), depth_l1=Ll1depth, iter_time_ms=viewtrust_iter_time_ms, gaussian_count=viewtrust_gaussian_count, densification_eligible=viewtrust_densification_eligible, densification_triggered=viewtrust_densification_triggered, opacity_reset_triggered=viewtrust_opacity_reset_triggered, optimizer_step=iteration < opt.iterations, status=\"ok\", **viewtrust_visibility_stats, **viewtrust_radii_stats, **viewtrust_grad_stats)\n"
-        "            _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"iteration_end\", gaussian_count=viewtrust_gaussian_count)\n"
+        "            _viewtrust_pr7_call(viewtrust_observer, \"log_iteration_metrics\", iteration=iteration, event_type=\"iteration_metrics\", camera_index=vind, camera_image_name=_viewtrust_pr7_camera_name(viewpoint_cam), loss=_viewtrust_pr7_scalar(loss), l1_loss=_viewtrust_pr7_scalar(Ll1), ssim=_viewtrust_pr7_scalar(ssim_value), depth_l1=Ll1depth, iter_time_ms=viewtrust_iter_time_ms, gaussian_count=viewtrust_gaussian_count_render, densification_eligible=viewtrust_densification_eligible, densification_triggered=viewtrust_densification_triggered, opacity_reset_triggered=viewtrust_opacity_reset_triggered, optimizer_step=iteration < opt.iterations, status=\"ok\", **viewtrust_visibility_stats, **viewtrust_radii_stats, **viewtrust_grad_stats)\n"
+        "            _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"iteration_metrics_render_snapshot\", gaussian_count=viewtrust_gaussian_count_render)\n"
         f"            {END}\n"
     )
     text = _insert_after(text, optimizer_header, metrics_patch)

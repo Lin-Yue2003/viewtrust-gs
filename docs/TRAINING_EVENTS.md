@@ -125,7 +125,8 @@ training_events_summary.json
 `training_events.csv` records global iteration/save/checkpoint events.
 `densification_events.csv` records actual densification calls when they occur.
 `gaussian_count_timeseries.csv` records count checkpoints such as
-`after_scene_init`, `iteration_end`, and `final`.
+`after_scene_init`, `after_render`, `iteration_metrics_render_snapshot`,
+`after_densification`, `after_optimizer_step`, and `final`.
 
 PR7.2 enforces scalar sanity for visibility and radii fields:
 
@@ -136,8 +137,16 @@ PR7.2 enforces scalar sanity for visibility and radii fields:
 ```
 
 `visible_gaussian_count` is computed from `visibility_filter.detach().bool().sum()`.
-`visibility_ratio` uses the current Gaussian count as the denominator. The
-observer stores Python scalars only and does not retain tensors.
+`visibility_ratio` uses the render-time Gaussian count as the denominator. For
+`iteration_metrics`, `gaussian_count`, `visible_gaussian_count`,
+`visibility_ratio`, radii stats, and position-gradient stats all refer to the
+same render-time/pre-densification snapshot. Post-prune counts are recorded in
+`densification_events.csv` as `gaussian_count_before`,
+`gaussian_count_after`, and `gaussian_count_delta`.
+
+PR11.1 fixes the edge case where a densification/pruning iteration could mix
+pre-prune radii with a post-prune Gaussian count in one `iteration_metrics`
+row. The observer stores Python scalars only and does not retain tensors.
 
 ## Inspect
 
@@ -155,13 +164,16 @@ head -20 "$RUN_DIR/tables/gaussian_count_timeseries.csv"
 ```
 
 With `--require-events`, the inspector fails if any training event row violates
-the visibility invariants. The compact report includes:
+the visibility/radii invariants or any densification row has inconsistent
+before/after/delta counts. The compact report includes:
 
 ```text
 invalid_training_event_rows
 max_visible_gaussian_count
 max_visibility_ratio
 max_gaussian_count
+max_radii_nonzero_count
+invalid_densification_event_rows
 requested_iterations
 logged_iteration_count
 ```
