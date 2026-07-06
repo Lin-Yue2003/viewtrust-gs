@@ -50,10 +50,7 @@ PR7.2 data correctness behavior:
   - requested_iterations=opt.iterations is passed to the observer summary
   - patch checks require the corrected visibility extraction
 
-PR8 lifecycle behavior:
+PR8 lifecycle note:
 
-  - the generated patch also instruments scene/gaussian_model.py
-  - lifecycle hooks are gated by VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE=1
-  - lifecycle IDs are non-trainable Python metadata managed by ViewTrust
-  - clone/split/prune hooks update lifecycle state without changing decisions
-  - lifecycle finalize writes gaussian_lifecycle_summary.json and tables
+  - PR8 is now applied as a separate pr8_gaussian_lifecycle patch
+  - apply PR7 first, then apply PR8 when lifecycle logging is needed

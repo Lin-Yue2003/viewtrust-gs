@@ -212,8 +212,6 @@ def main() -> int:
             raise ValueError("dry-run did not report inserted markers")
         if (train_path.with_name("train.py.viewtrust-pr7-backup")).exists():
             raise ValueError("dry-run should not create backup")
-        if (model_path.with_name("gaussian_model.py.viewtrust-pr8-backup")).exists():
-            raise ValueError("dry-run should not create model backup")
 
         applied = _run(
             [
@@ -229,23 +227,13 @@ def main() -> int:
             raise RuntimeError(applied.stderr or applied.stdout)
         if not train_path.with_name("train.py.viewtrust-pr7-backup").exists():
             raise FileNotFoundError("backup was not created")
-        if not model_path.with_name("gaussian_model.py.viewtrust-pr8-backup").exists():
-            raise FileNotFoundError("model backup was not created")
         patched_text = train_path.read_text(encoding="utf-8")
-        patched_model_text = model_path.read_text(encoding="utf-8")
         if "[ViewTrust] Training event observer initialization failed" not in patched_text:
             raise ValueError("patched trainer does not include visible init failure message")
         if "[ViewTrust] Training event logging disabled." not in patched_text:
             raise ValueError("patched trainer does not include disabled logging message")
         if "VIEWTRUST_OBSERVER_STRICT" not in patched_text:
             raise ValueError("patched trainer does not include strict observer mode")
-        if "VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE" not in patched_text:
-            raise ValueError("patched trainer does not include lifecycle env gate")
-        if "GaussianLifecycleObserver" not in patched_text:
-            raise ValueError("patched trainer does not import lifecycle observer")
-        for expected in ("on_after_clone", "on_after_split", "on_before_prune", "on_after_prune"):
-            if expected not in patched_model_text:
-                raise ValueError(f"patched model does not include {expected}")
 
         check = _run(
             [
@@ -263,6 +251,84 @@ def main() -> int:
         check_report = json.loads(check.stdout)
         if not check_report["ok"]:
             raise ValueError(check_report)
+        if "has_lifecycle_env_gate" in check_report["checks"]:
+            raise ValueError("PR7 check should not require PR8 lifecycle hooks")
+
+        pr8_before = _run(
+            [
+                sys.executable,
+                str(check_script),
+                "--third-party-root",
+                str(third_party_root),
+                "--patch",
+                "pr8_gaussian_lifecycle",
+            ]
+        )
+        if pr8_before.returncode != 0:
+            raise RuntimeError(pr8_before.stderr or pr8_before.stdout)
+        if json.loads(pr8_before.stdout)["ok"]:
+            raise ValueError("PR8 check unexpectedly passed before PR8 apply")
+
+        pr8_dry_run = _run(
+            [
+                sys.executable,
+                str(apply_script),
+                "--third-party-root",
+                str(third_party_root),
+                "--patch",
+                "pr8_gaussian_lifecycle",
+                "--dry-run",
+            ]
+        )
+        if pr8_dry_run.returncode != 0:
+            raise RuntimeError(pr8_dry_run.stderr or pr8_dry_run.stdout)
+        if (train_path.with_name("train.py.viewtrust-pr8-backup")).exists():
+            raise ValueError("PR8 dry-run should not create train backup")
+        if (model_path.with_name("gaussian_model.py.viewtrust-pr8-backup")).exists():
+            raise ValueError("PR8 dry-run should not create model backup")
+
+        pr8_applied = _run(
+            [
+                sys.executable,
+                str(apply_script),
+                "--third-party-root",
+                str(third_party_root),
+                "--patch",
+                "pr8_gaussian_lifecycle",
+            ]
+        )
+        if pr8_applied.returncode != 0:
+            raise RuntimeError(pr8_applied.stderr or pr8_applied.stdout)
+        if not train_path.with_name("train.py.viewtrust-pr8-backup").exists():
+            raise FileNotFoundError("PR8 train backup was not created")
+        if not model_path.with_name("gaussian_model.py.viewtrust-pr8-backup").exists():
+            raise FileNotFoundError("PR8 model backup was not created")
+        patched_text = train_path.read_text(encoding="utf-8")
+        patched_model_text = model_path.read_text(encoding="utf-8")
+        if "VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE" not in patched_text:
+            raise ValueError("patched trainer does not include lifecycle env gate")
+        if "GaussianLifecycleObserver" not in patched_text:
+            raise ValueError("patched trainer does not import lifecycle observer")
+        for expected in ("on_after_clone", "on_after_split", "on_before_prune", "on_after_prune"):
+            if expected not in patched_model_text:
+                raise ValueError(f"patched model does not include {expected}")
+
+        pr8_check = _run(
+            [
+                sys.executable,
+                str(check_script),
+                "--third-party-root",
+                str(third_party_root),
+                "--patch",
+                "pr8_gaussian_lifecycle",
+                "--require-applied",
+            ]
+        )
+        if pr8_check.returncode != 0:
+            raise RuntimeError(pr8_check.stderr or pr8_check.stdout)
+        pr8_report = json.loads(pr8_check.stdout)
+        if not pr8_report["ok"]:
+            raise ValueError(pr8_report)
 
         compile_result = _run(
             [sys.executable, "-m", "py_compile", str(train_path), str(model_path)]

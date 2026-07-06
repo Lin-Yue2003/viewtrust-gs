@@ -271,6 +271,6 @@ fails on impossible scalar rows. It remains observation-only.
 
 PR8 Gaussian Lifecycle Logging adds non-trainable per-run Gaussian lifecycle
 IDs, clone/split/prune observation hooks, final lifecycle tables, lifecycle
-summary inspection, and invariant checks. It extends the existing PR7
-observation patch rather than stacking a second patch, and remains strictly
-observation-only.
+summary inspection, and invariant checks. It is a separate patch applied after
+PR7 training events so an existing PR7-patched server checkout can be upgraded
+without restoring the trainer. It remains strictly observation-only.

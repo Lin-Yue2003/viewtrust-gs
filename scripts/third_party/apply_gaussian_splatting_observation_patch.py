@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the PR7/PR8 observation-only patch to a local Gaussian Splatting clone."""
+"""Apply ViewTrust observation-only patches to a local Gaussian Splatting clone."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ import json
 import shutil
 from pathlib import Path
 
-PATCH_NAME = "pr7_training_events"
+PATCH_NAME_PR7 = "pr7_training_events"
+PATCH_NAME_PR8 = "pr8_gaussian_lifecycle"
+SUPPORTED_PATCHES = {PATCH_NAME_PR7, PATCH_NAME_PR8}
 START = "# VIEWTRUST PR7 OBSERVATION START"
 END = "# VIEWTRUST PR7 OBSERVATION END"
 START_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE START"
@@ -230,7 +232,7 @@ def apply_patch_text(text: str) -> str:
     text = _insert_after(
         text,
         "except:\n    SPARSE_ADAM_AVAILABLE = False\n",
-        "\n" + HELPER_SNIPPET + "\n" + LIFECYCLE_TRAIN_SNIPPET + "\n",
+        "\n" + HELPER_SNIPPET + "\n",
     )
 
     checkpoint_block = (
@@ -243,9 +245,6 @@ def apply_patch_text(text: str) -> str:
         f"    {START}\n"
         "    viewtrust_observer = _viewtrust_pr7_init_observer(dataset, opt, first_iter, scene, gaussians)\n"
         f"    {END}\n"
-        f"    {START_PR8}\n"
-        "    viewtrust_lifecycle_observer = _viewtrust_pr8_init_lifecycle_observer(dataset, opt, first_iter, scene, gaussians)\n"
-        f"    {END_PR8}\n"
     )
     text = _insert_after(text, checkpoint_block, observer_init)
 
@@ -299,7 +298,6 @@ def apply_patch_text(text: str) -> str:
         "                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None\n"
         f"                    {START}\n"
         "                    viewtrust_gaussian_count_before = _viewtrust_pr7_count_gaussians(gaussians)\n"
-        "                    gaussians.viewtrust_lifecycle_iteration = iteration\n"
         f"                    {END}\n"
         "                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)\n"
         f"                    {START}\n"
@@ -307,7 +305,6 @@ def apply_patch_text(text: str) -> str:
         "                    viewtrust_gaussian_count_after = _viewtrust_pr7_count_gaussians(gaussians)\n"
         "                    _viewtrust_pr7_call(viewtrust_observer, \"log_densification_event\", iteration=iteration, densification_eligible=True, densification_triggered=True, densify_from_iter=opt.densify_from_iter, densify_until_iter=opt.densify_until_iter, densification_interval=opt.densification_interval, densify_grad_threshold=opt.densify_grad_threshold, size_threshold=size_threshold, gaussian_count_before=viewtrust_gaussian_count_before, gaussian_count_after=viewtrust_gaussian_count_after, opacity_reset_triggered=False, status=\"ok\")\n"
         "                    _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"after_densification\", gaussian_count=viewtrust_gaussian_count_after)\n"
-        "                    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"on_after_densification\", iteration=iteration, gaussians=gaussians, gaussian_count=viewtrust_gaussian_count_after)\n"
         f"                    {END}\n"
     )
     if densify_call not in text:
@@ -375,9 +372,6 @@ def apply_patch_text(text: str) -> str:
         f"\n    {START}\n"
         "    _viewtrust_pr7_call(viewtrust_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
         f"    {END}\n"
-        f"    {START_PR8}\n"
-        "    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, gaussians=gaussians, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
-        f"    {END_PR8}\n"
     )
     text = _insert_after(text, checkpoint_patch, finalize_patch)
     return text
@@ -448,10 +442,64 @@ def apply_gaussian_model_patch_text(text: str) -> str:
     return text
 
 
+def apply_lifecycle_train_patch_text(text: str) -> str:
+    if START_PR8 in text:
+        raise ValueError("PR8 Gaussian lifecycle patch is already applied to train.py")
+    if START not in text:
+        raise ValueError("PR8 requires the PR7 training event patch to be applied first")
+    if "_viewtrust_pr7_count_gaussians" not in text:
+        raise ValueError("PR8 requires PR7 helper functions in train.py")
+
+    text = _insert_after(text, f"{END}\n", "\n" + LIFECYCLE_TRAIN_SNIPPET + "\n")
+
+    pr7_observer_init = (
+        f"    {START}\n"
+        "    viewtrust_observer = _viewtrust_pr7_init_observer(dataset, opt, first_iter, scene, gaussians)\n"
+        f"    {END}\n"
+    )
+    lifecycle_init = (
+        f"    {START_PR8}\n"
+        "    viewtrust_lifecycle_observer = _viewtrust_pr8_init_lifecycle_observer(dataset, opt, first_iter, scene, gaussians)\n"
+        f"    {END_PR8}\n"
+    )
+    text = _insert_after(text, pr7_observer_init, lifecycle_init)
+
+    count_before_line = (
+        "                    viewtrust_gaussian_count_before = _viewtrust_pr7_count_gaussians(gaussians)\n"
+    )
+    lifecycle_iteration_line = "                    gaussians.viewtrust_lifecycle_iteration = iteration\n"
+    text = _insert_after(text, count_before_line, lifecycle_iteration_line)
+
+    after_densification_line = (
+        "                    _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"after_densification\", gaussian_count=viewtrust_gaussian_count_after)\n"
+    )
+    lifecycle_after_densification = (
+        "                    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"on_after_densification\", iteration=iteration, gaussians=gaussians, gaussian_count=viewtrust_gaussian_count_after)\n"
+    )
+    text = _insert_after(
+        text,
+        after_densification_line,
+        lifecycle_after_densification,
+    )
+
+    pr7_finalize = (
+        f"\n    {START}\n"
+        "    _viewtrust_pr7_call(viewtrust_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
+        f"    {END}\n"
+    )
+    lifecycle_finalize = (
+        f"    {START_PR8}\n"
+        "    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"finalize\", iteration=opt.iterations, requested_iterations=opt.iterations, gaussians=gaussians, final_gaussian_count=_viewtrust_pr7_count_gaussians(gaussians))\n"
+        f"    {END_PR8}\n"
+    )
+    text = _insert_after(text, pr7_finalize, lifecycle_finalize)
+    return text
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--third-party-root", required=True, type=Path)
-    parser.add_argument("--patch", default=PATCH_NAME)
+    parser.add_argument("--patch", default=PATCH_NAME_PR7)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
@@ -459,33 +507,70 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.patch != PATCH_NAME:
+    if args.patch not in SUPPORTED_PATCHES:
         raise SystemExit(f"unsupported patch: {args.patch}")
 
     train_path = args.third_party_root / "gaussian-splatting" / "train.py"
+    if not train_path.is_file():
+        raise SystemExit(f"ERROR: train.py not found: {train_path}")
+    original = train_path.read_text(encoding="utf-8")
+
+    if args.patch == PATCH_NAME_PR7:
+        already_applied = START in original and "VIEWTRUST_ENABLE_TRAINING_EVENTS" in original
+        if already_applied and not args.force:
+            raise SystemExit(
+                "ERROR: PR7 training event patch is already applied. "
+                "Apply PR8 with --patch pr8_gaussian_lifecycle if you are upgrading lifecycle logging."
+            )
+        if already_applied and args.force:
+            raise SystemExit(
+                "ERROR: --force reapply is intentionally not supported for patched files. Restore backup first."
+            )
+
+        patched = apply_patch_text(original)
+        backup_path = train_path.with_name("train.py.viewtrust-pr7-backup")
+        report = {
+            "patch": args.patch,
+            "train_path": str(train_path),
+            "backup_path": str(backup_path),
+            "dry_run": args.dry_run,
+            "changed": patched != original,
+            "markers_inserted": patched.count(START),
+            "upgrade_hint": (
+                "After PR7 is applied, run this script with --patch pr8_gaussian_lifecycle "
+                "to add Gaussian lifecycle hooks."
+            ),
+        }
+        if not args.dry_run:
+            if backup_path.exists() and not args.force:
+                raise SystemExit(f"ERROR: backup already exists: {backup_path}")
+            shutil.copy2(train_path, backup_path)
+            train_path.write_text(patched, encoding="utf-8")
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
     gaussian_model_path = (
         args.third_party_root / "gaussian-splatting" / "scene" / "gaussian_model.py"
     )
-    if not train_path.is_file():
-        raise SystemExit(f"ERROR: train.py not found: {train_path}")
     if not gaussian_model_path.is_file():
         raise SystemExit(f"ERROR: gaussian_model.py not found: {gaussian_model_path}")
-    original = train_path.read_text(encoding="utf-8")
+    if START not in original:
+        raise SystemExit(
+            "ERROR: PR8 Gaussian lifecycle patch requires PR7 training events first. "
+            "Run --patch pr7_training_events before --patch pr8_gaussian_lifecycle."
+        )
     original_model = gaussian_model_path.read_text(encoding="utf-8")
-    already_applied = (
-        START in original
-        and "VIEWTRUST_ENABLE_TRAINING_EVENTS" in original
-    ) or START_PR8 in original_model
-    if already_applied and not args.force:
-        raise SystemExit("ERROR: PR7 observation patch is already applied. Use --force to reapply.")
+    already_lifecycle = START_PR8 in original or START_PR8 in original_model
+    if already_lifecycle and not args.force:
+        raise SystemExit("ERROR: PR8 Gaussian lifecycle patch is already applied.")
+    if already_lifecycle and args.force:
+        raise SystemExit(
+            "ERROR: --force reapply is intentionally not supported for patched files. Restore backup first."
+        )
 
-    source = original
-    if already_applied and args.force:
-        raise SystemExit("ERROR: --force reapply is intentionally not supported for patched files. Restore backup first.")
-
-    patched = apply_patch_text(source)
+    patched = apply_lifecycle_train_patch_text(original)
     patched_model = apply_gaussian_model_patch_text(original_model)
-    backup_path = train_path.with_name("train.py.viewtrust-pr7-backup")
+    backup_path = train_path.with_name("train.py.viewtrust-pr8-backup")
     model_backup_path = gaussian_model_path.with_name(
         "gaussian_model.py.viewtrust-pr8-backup"
     )
@@ -497,8 +582,8 @@ def main() -> int:
         "gaussian_model_backup_path": str(model_backup_path),
         "dry_run": args.dry_run,
         "changed": patched != original or patched_model != original_model,
-        "markers_inserted": patched.count(START) + patched.count(START_PR8),
-        "model_markers_inserted": patched_model.count(START_PR8),
+        "train_lifecycle_markers_inserted": patched.count(START_PR8),
+        "model_lifecycle_markers_inserted": patched_model.count(START_PR8),
     }
     if not args.dry_run:
         if backup_path.exists() and not args.force:

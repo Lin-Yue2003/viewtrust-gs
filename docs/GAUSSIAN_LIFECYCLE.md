@@ -9,8 +9,9 @@ densification, pruning, opacity reset, or rendering decisions.
 
 ## Patch Strategy
 
-PR8 extends the existing marker-delimited PR7 observation patch instead of
-adding a second independently stacked patch. The patch generator updates:
+PR8 is a separate marker-delimited patch that is applied after PR7 training
+events. This avoids the confusing state where an already-patched PR7 checkout
+cannot be upgraded. The patch generator updates:
 
 ```text
 third_party/gaussian-splatting/train.py
@@ -19,6 +20,26 @@ third_party/gaussian-splatting/scene/gaussian_model.py
 
 Patched `third_party` source is server-local state and is not committed to
 ViewTrust-GS.
+
+Apply/check sequence:
+
+```bash
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr7_training_events
+
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr8_gaussian_lifecycle
+
+python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr8_gaussian_lifecycle \
+  --require-applied
+```
+
+If PR7 is already applied on the server, skip the PR7 apply command and run the
+PR8 apply command directly.
 
 ## Enable
 

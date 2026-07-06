@@ -203,18 +203,17 @@ preflights `viewtrust.observation.training_events` before launching training.
 
 ## PR8 Gaussian Lifecycle
 
-PR8 extends the same observation patch to include Gaussian lifecycle hooks in
-`train.py` and `scene/gaussian_model.py`. Re-apply the patch from a clean
-official trainer checkout or restored backup, then check:
+PR8 is a separate lifecycle patch applied after PR7 training events. If PR7 is
+already applied on the server, run only the PR8 apply/check commands:
 
 ```bash
 python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
   --third-party-root ./third_party \
-  --patch pr7_training_events
+  --patch pr8_gaussian_lifecycle
 
 python scripts/third_party/check_gaussian_splatting_observation_patch.py \
   --third-party-root ./third_party \
-  --patch pr7_training_events \
+  --patch pr8_gaussian_lifecycle \
   --require-applied
 ```
 

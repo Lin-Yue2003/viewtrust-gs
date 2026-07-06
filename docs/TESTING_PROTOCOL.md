@@ -193,6 +193,15 @@ python scripts/third_party/check_gaussian_splatting_observation_patch.py \
   --patch pr7_training_events \
   --require-applied
 
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr8_gaussian_lifecycle
+
+python scripts/third_party/check_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr8_gaussian_lifecycle \
+  --require-applied
+
 python scripts/train/run_clean_chair_baseline.py \
   --trainer gaussian-splatting \
   --data-root "$VIEWTRUST_DATA_ROOT" \

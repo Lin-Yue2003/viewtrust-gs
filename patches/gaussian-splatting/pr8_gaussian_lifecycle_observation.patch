@@ -1,0 +1,40 @@
+PR8 Gaussian lifecycle observation patch
+=======================================
+
+This patch is applied after PR7 training events:
+
+  python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+    --third-party-root ./third_party \
+    --patch pr8_gaussian_lifecycle
+
+The generated patch adds marker-delimited, observation-only lifecycle hooks to:
+
+  third_party/gaussian-splatting/train.py
+  third_party/gaussian-splatting/scene/gaussian_model.py
+
+Markers:
+
+  # VIEWTRUST PR8 GAUSSIAN LIFECYCLE START
+  # VIEWTRUST PR8 GAUSSIAN LIFECYCLE END
+
+PR8 depends on the PR7 patch because it reuses PR7 child-environment setup and
+Gaussian count helpers in train.py. It is intentionally separate so an existing
+server checkout with old PR7 already applied can be upgraded without restoring
+the whole trainer first.
+
+Safety policy:
+
+  - no loss changes
+  - no optimizer behavior changes
+  - no camera sampling changes
+  - no rendering changes
+  - no densification threshold or decision changes
+  - no pruning or opacity reset decision changes
+  - lifecycle IDs are non-trainable Python metadata
+  - no third_party source is committed to ViewTrust-GS
+
+The observer activates only when:
+
+  VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE=1
+
+Otherwise the official trainer should behave as before.
