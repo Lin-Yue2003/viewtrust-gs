@@ -1,0 +1,36 @@
+PR12 view influence attribution patch
+=====================================
+
+This patch is applied after PR7 and PR8:
+
+  python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+    --third-party-root ./third_party \
+    --patch pr12_view_influence_attribution
+
+The generated patch adds marker-delimited, observation-only hooks to the local
+official Gaussian Splatting `train.py` clone.
+
+Markers:
+
+  # VIEWTRUST PR12 VIEW INFLUENCE START
+  # VIEWTRUST PR12 VIEW INFLUENCE END
+
+Safety policy:
+
+  - no loss changes
+  - no optimizer changes
+  - no camera sampling changes
+  - no rendering changes
+  - no densification threshold or decision changes
+  - no pruning or opacity reset decision changes
+  - no third_party source is committed to ViewTrust-GS
+
+PR12 behavior:
+
+  - sampled view identity is added to PR7 iteration_metrics rows
+  - fields include view_name, camera_uid, and view_split
+  - PR8 lifecycle birth/prune events receive the active sampled-view context
+  - context is cleared after the densification/pruning block
+
+This is temporal/source-view attribution, not exact per-pixel contribution
+attribution and not a trust score.

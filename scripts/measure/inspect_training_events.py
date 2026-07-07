@@ -46,6 +46,10 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
             "max_visibility_ratio": None,
             "max_gaussian_count": None,
             "max_radii_nonzero_count": None,
+            "has_view_identity": False,
+            "missing_view_identity_rows": None,
+            "unique_training_view_count": None,
+            "sampled_view_rows": None,
         }
 
     invalid_rows = 0
@@ -53,8 +57,12 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
     max_ratio: float | None = None
     max_gaussian: int | None = None
     max_radii_nonzero: int | None = None
+    sampled_view_rows = 0
+    missing_view_identity_rows = 0
+    training_view_names: set[str] = set()
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
+            event_type = row.get("event_type")
             gaussian_count = _int_or_none(row.get("gaussian_count"))
             visible_count = _int_or_none(row.get("visible_gaussian_count"))
             visibility_ratio = _float_or_none(row.get("visibility_ratio"))
@@ -104,6 +112,15 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
                 and radii_nonzero_count > gaussian_count
             ):
                 row_invalid = True
+            if event_type == "iteration_metrics":
+                sampled_view_rows += 1
+                view_name = str(row.get("view_name") or "")
+                if not view_name:
+                    missing_view_identity_rows += 1
+                else:
+                    view_split = str(row.get("view_split") or "")
+                    if view_split == "train" or view_name.startswith("train_"):
+                        training_view_names.add(view_name)
             if row_invalid:
                 invalid_rows += 1
 
@@ -113,6 +130,10 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
         "max_visibility_ratio": max_ratio,
         "max_gaussian_count": max_gaussian,
         "max_radii_nonzero_count": max_radii_nonzero,
+        "has_view_identity": sampled_view_rows > 0 and missing_view_identity_rows == 0,
+        "missing_view_identity_rows": missing_view_identity_rows,
+        "unique_training_view_count": len(training_view_names),
+        "sampled_view_rows": sampled_view_rows,
     }
 
 
@@ -190,6 +211,10 @@ def inspect_training_events(run_dir: Path) -> dict[str, Any]:
         "max_visibility_ratio": sanity["max_visibility_ratio"],
         "max_gaussian_count": sanity["max_gaussian_count"],
         "max_radii_nonzero_count": sanity["max_radii_nonzero_count"],
+        "has_view_identity": sanity["has_view_identity"],
+        "missing_view_identity_rows": sanity["missing_view_identity_rows"],
+        "unique_training_view_count": sanity["unique_training_view_count"],
+        "sampled_view_rows": sanity["sampled_view_rows"],
         "densification_trigger_count": summary.get("densification_trigger_count"),
         "initial_gaussian_count": summary.get("initial_gaussian_count"),
         "final_gaussian_count": summary.get("final_gaussian_count"),
@@ -202,6 +227,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--require-events", action="store_true")
+    parser.add_argument("--require-view-identity", action="store_true")
     return parser.parse_args()
 
 
@@ -228,6 +254,13 @@ def main() -> int:
         print(
             "ERROR: densification event outputs contain invalid scalar rows: "
             f"{report['invalid_densification_event_rows']}",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_view_identity and report["missing_view_identity_rows"]:
+        print(
+            "ERROR: training event outputs are missing sampled view identity rows: "
+            f"{report['missing_view_identity_rows']}",
             file=sys.stderr,
         )
         return 1

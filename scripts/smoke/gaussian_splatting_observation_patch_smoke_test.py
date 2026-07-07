@@ -336,6 +336,47 @@ def main() -> int:
         if not pr8_report["ok"]:
             raise ValueError(pr8_report)
 
+        pr12_applied = _run(
+            [
+                sys.executable,
+                str(apply_script),
+                "--third-party-root",
+                str(third_party_root),
+                "--patch",
+                "pr12_view_influence_attribution",
+            ]
+        )
+        if pr12_applied.returncode != 0:
+            raise RuntimeError(pr12_applied.stderr or pr12_applied.stdout)
+        if not train_path.with_name("train.py.viewtrust-pr12-backup").exists():
+            raise FileNotFoundError("PR12 train backup was not created")
+        patched_text = train_path.read_text(encoding="utf-8")
+        for expected in (
+            "_viewtrust_pr12_view_name",
+            "view_name=viewtrust_pr12_view_name",
+            "set_source_view_context",
+            "clear_source_view_context",
+        ):
+            if expected not in patched_text:
+                raise ValueError(f"patched trainer does not include PR12 hook: {expected}")
+
+        pr12_check = _run(
+            [
+                sys.executable,
+                str(check_script),
+                "--third-party-root",
+                str(third_party_root),
+                "--patch",
+                "pr12_view_influence_attribution",
+                "--require-applied",
+            ]
+        )
+        if pr12_check.returncode != 0:
+            raise RuntimeError(pr12_check.stderr or pr12_check.stdout)
+        pr12_report = json.loads(pr12_check.stdout)
+        if not pr12_report["ok"]:
+            raise ValueError(pr12_report)
+
         compile_result = _run(
             [sys.executable, "-m", "py_compile", str(train_path), str(model_path)]
         )

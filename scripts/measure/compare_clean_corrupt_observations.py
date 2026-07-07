@@ -304,15 +304,128 @@ def _artifact_rows(clean_run_dir: Path, corrupt_run_dir: Path) -> list[dict[str,
     return rows
 
 
-def _corruption_summary(corrupt_run: dict[str, Any]) -> dict[str, Any]:
+def _resolve_corrupt_condition_root(
+    corrupt_run: dict[str, Any],
+    *,
+    data_root: Path | None,
+    scene: str,
+    corruption_condition: str,
+    corrupt_condition_root: Path | None,
+) -> Path | None:
+    candidates: list[Path] = []
     prepared = corrupt_run["metadata"].get("prepared_scene_root")
-    if not prepared:
-        return {}
-    root = Path(str(prepared))
-    return _json_file(root / "corruption_summary.json")
+    if prepared:
+        candidates.append(Path(str(prepared)))
+    if corrupt_condition_root is not None:
+        candidates.append(corrupt_condition_root)
+    if data_root is not None:
+        candidates.append(
+            data_root
+            / "viewtrust-mini"
+            / "nerf_synthetic"
+            / scene
+            / corruption_condition
+        )
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            return candidate.resolve()
+    return None
 
 
-def compare_runs(clean_run_dir: Path, corrupt_run_dir: Path, corruption_condition: str) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def _corruption_artifacts(root: Path | None) -> dict[str, Any]:
+    if root is None:
+        return {
+            "root": None,
+            "summary": {},
+            "manifest": {},
+            "csv_rows": [],
+            "available": False,
+        }
+    summary = _json_file(root / "corruption_summary.json")
+    manifest = _json_file(root / "corruption_manifest.json")
+    rows = _read_csv_rows(root / "corruption_manifest.csv")
+    training_manifest = _json_file(root / "manifest.json")
+    return {
+        "root": root,
+        "summary": summary,
+        "manifest": manifest,
+        "training_manifest": training_manifest,
+        "csv_rows": rows,
+        "available": bool(summary),
+    }
+
+
+def _view_key(row: dict[str, str]) -> tuple[str, str]:
+    split = str(row.get("split", ""))
+    image_name = str(row.get("image_name", ""))
+    view_name = Path(image_name).stem
+    return split, view_name
+
+
+def _view_metric_rows(run_dir: Path) -> dict[tuple[str, str], dict[str, str]]:
+    rows = _read_csv_rows(run_dir / "tables" / "view_metrics.csv")
+    return {_view_key(row): row for row in rows}
+
+
+def _corruption_by_view(rows: list[dict[str, str]]) -> dict[tuple[str, str], dict[str, str]]:
+    result: dict[tuple[str, str], dict[str, str]] = {}
+    for row in rows:
+        result[(str(row.get("split", "")), str(row.get("view_name", "")))] = row
+    return result
+
+
+def _view_corruption_effect_rows(
+    *,
+    clean_run_dir: Path,
+    corrupt_run_dir: Path,
+    corruption_rows: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    clean_rows = _view_metric_rows(clean_run_dir)
+    corrupt_rows = _view_metric_rows(corrupt_run_dir)
+    corruption_by_view = _corruption_by_view(corruption_rows)
+    if not clean_rows or not corrupt_rows or not corruption_by_view:
+        return []
+    output: list[dict[str, Any]] = []
+    for key in sorted(set(clean_rows) | set(corrupt_rows)):
+        split, view_name = key
+        clean = clean_rows.get(key, {})
+        corrupt = corrupt_rows.get(key, {})
+        corruption = corruption_by_view.get(key, {})
+        clean_psnr = _float_or_none(clean.get("psnr"))
+        corrupt_psnr = _float_or_none(corrupt.get("psnr"))
+        clean_ssim = _float_or_none(clean.get("ssim"))
+        corrupt_ssim = _float_or_none(corrupt.get("ssim"))
+        clean_l1 = _float_or_none(clean.get("l1_mean"))
+        corrupt_l1 = _float_or_none(corrupt.get("l1_mean"))
+        output.append(
+            {
+                "view_name": view_name,
+                "split": split,
+                "was_corrupted": corruption.get("was_corrupted", "false"),
+                "corruption_type": corruption.get("corruption_type", ""),
+                "clean_psnr": clean_psnr,
+                "corrupt_psnr": corrupt_psnr,
+                "psnr_delta": _delta(corrupt_psnr, clean_psnr),
+                "clean_ssim": clean_ssim,
+                "corrupt_ssim": corrupt_ssim,
+                "ssim_delta": _delta(corrupt_ssim, clean_ssim),
+                "clean_l1": clean_l1,
+                "corrupt_l1": corrupt_l1,
+                "l1_delta": _delta(corrupt_l1, clean_l1),
+            }
+        )
+    return output
+
+
+def compare_runs(
+    clean_run_dir: Path,
+    corrupt_run_dir: Path,
+    corruption_condition: str,
+    *,
+    data_root: Path | None = None,
+    scene: str = "chair",
+    corrupt_condition_root: Path | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     clean = _run_info(clean_run_dir)
     corrupt = _run_info(corrupt_run_dir)
     warnings: list[str] = []
@@ -496,11 +609,31 @@ def compare_runs(clean_run_dir: Path, corrupt_run_dir: Path, corruption_conditio
         ]
     )
 
-    corruption = _corruption_summary(corrupt)
+    resolved_scene = corrupt["scene"] or clean["scene"] or scene
+    corruption_root = _resolve_corrupt_condition_root(
+        corrupt,
+        data_root=data_root.resolve() if data_root is not None else None,
+        scene=resolved_scene,
+        corruption_condition=corruption_condition,
+        corrupt_condition_root=corrupt_condition_root.resolve()
+        if corrupt_condition_root is not None
+        else None,
+    )
+    corruption_artifacts = _corruption_artifacts(corruption_root)
+    corruption = corruption_artifacts["summary"]
+    if not corruption:
+        warnings.append("corruption summary unavailable")
+    view_corruption_effects = _view_corruption_effect_rows(
+        clean_run_dir=clean["path"],
+        corrupt_run_dir=corrupt["path"],
+        corruption_rows=corruption_artifacts["csv_rows"],
+    )
+    if not view_corruption_effects and (clean["has_view_metrics"] and corrupt["has_view_metrics"]):
+        warnings.append("view corruption effects unavailable")
     summary = {
         "schema_name": SCHEMA_NAME,
         "schema_version": SCHEMA_VERSION,
-        "scene": corrupt["scene"] or clean["scene"] or "chair",
+        "scene": resolved_scene,
         "trainer": corrupt["trainer"] or clean["trainer"] or "gaussian-splatting",
         "clean_condition": clean["condition"] or "clean",
         "corrupt_condition": corruption_condition,
@@ -557,11 +690,15 @@ def compare_runs(clean_run_dir: Path, corrupt_run_dir: Path, corruption_conditio
         "corrupt_dead_final_count": _int_or_none(lifecycle_corrupt.get("dead_final_count")),
         "view_metrics_available": clean["has_view_metrics"] and corrupt["has_view_metrics"],
         "corruption_summary_available": bool(corruption),
+        "corruption_condition_root": str(corruption_root) if corruption_root else None,
         "corruption_summary": corruption,
+        "corruption_manifest_available": bool(corruption_artifacts["manifest"]),
+        "corruption_manifest_csv_available": bool(corruption_artifacts["csv_rows"]),
+        "view_corruption_effects_available": bool(view_corruption_effects),
         "warnings": warnings,
     }
     artifacts = _artifact_rows(clean["path"], corrupt["path"])
-    return summary, metrics, artifacts
+    return summary, metrics, artifacts, view_corruption_effects
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None:
@@ -656,7 +793,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clean-run-dir", required=True, type=Path)
     parser.add_argument("--corrupt-run-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--data-root", type=Path)
+    parser.add_argument("--scene", default="chair")
     parser.add_argument("--corruption-condition", required=True)
+    parser.add_argument("--corrupt-condition-root", type=Path)
     parser.add_argument("--require-observation-invariants", action="store_true")
     parser.add_argument("--write-markdown", action="store_true")
     return parser.parse_args()
@@ -664,10 +804,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    summary, metrics, artifacts = compare_runs(
+    summary, metrics, artifacts, view_corruption_effects = compare_runs(
         args.clean_run_dir,
         args.corrupt_run_dir,
         args.corruption_condition,
+        data_root=args.data_root,
+        scene=args.scene,
+        corrupt_condition_root=args.corrupt_condition_root,
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "clean_vs_corrupt_summary.json").write_text(
@@ -692,6 +835,26 @@ def main() -> int:
             "artifact_group",
         ],
     )
+    if view_corruption_effects:
+        _write_csv(
+            args.output_dir / "view_corruption_effects.csv",
+            view_corruption_effects,
+            [
+                "view_name",
+                "split",
+                "was_corrupted",
+                "corruption_type",
+                "clean_psnr",
+                "corrupt_psnr",
+                "psnr_delta",
+                "clean_ssim",
+                "corrupt_ssim",
+                "ssim_delta",
+                "clean_l1",
+                "corrupt_l1",
+                "l1_delta",
+            ],
+        )
     if args.write_markdown:
         (args.output_dir / "clean_vs_corrupt_report.md").write_text(
             _markdown(summary),

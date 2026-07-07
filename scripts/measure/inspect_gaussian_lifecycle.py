@@ -83,6 +83,18 @@ def _validate_final_rows(rows: list[dict[str, str]], summary: dict[str, Any]) ->
     return errors
 
 
+def _source_view_coverage(rows: list[dict[str, str]]) -> dict[str, Any]:
+    source_event_types = {"clone_birth", "split_birth", "densification_birth", "prune_death"}
+    relevant = [row for row in rows if row.get("event_type") in source_event_types]
+    with_source = sum(1 for row in relevant if row.get("source_view_name"))
+    missing_source = len(relevant) - with_source
+    return {
+        "has_lifecycle_source_view": bool(relevant) and missing_source == 0,
+        "lifecycle_events_with_source_view": with_source,
+        "lifecycle_events_missing_source_view": missing_source,
+    }
+
+
 def inspect_gaussian_lifecycle(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     summary_path = run_dir / "gaussian_lifecycle_summary.json"
@@ -92,7 +104,9 @@ def inspect_gaussian_lifecycle(run_dir: Path) -> dict[str, Any]:
     missing = [str(path.relative_to(run_dir)) for path in required if not path.exists()]
     summary = _json_file(summary_path) if summary_path.exists() else {}
     final_rows = _csv_rows(final_csv)
+    event_rows = _csv_rows(events_csv)
     csv_errors = _validate_final_rows(final_rows, summary) if final_rows else []
+    source_view = _source_view_coverage(event_rows)
     summary_violations = _int_or_none(summary.get("invariant_violations")) or 0
     invariant_violations = summary_violations + len(csv_errors)
     return {
@@ -116,6 +130,7 @@ def inspect_gaussian_lifecycle(run_dir: Path) -> dict[str, Any]:
         "final_lifecycle_rows": summary.get("final_lifecycle_rows", len(final_rows)),
         "invariant_violations": invariant_violations,
         "csv_invariant_errors": csv_errors,
+        **source_view,
         "missing_required_paths": missing,
         "warnings": summary.get("warnings", []),
     }
@@ -126,6 +141,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--require-lifecycle", action="store_true")
     parser.add_argument("--require-no-invariant-violations", action="store_true")
+    parser.add_argument("--require-source-view", action="store_true")
     return parser.parse_args()
 
 
@@ -144,6 +160,13 @@ def main() -> int:
         print(
             "ERROR: Gaussian lifecycle invariant violations detected: "
             f"{report['invariant_violations']}",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_source_view and report["lifecycle_events_missing_source_view"]:
+        print(
+            "ERROR: Gaussian lifecycle events are missing source view identity rows: "
+            f"{report['lifecycle_events_missing_source_view']}",
             file=sys.stderr,
         )
         return 1

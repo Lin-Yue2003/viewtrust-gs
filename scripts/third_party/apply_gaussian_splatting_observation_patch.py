@@ -10,11 +10,14 @@ from pathlib import Path
 
 PATCH_NAME_PR7 = "pr7_training_events"
 PATCH_NAME_PR8 = "pr8_gaussian_lifecycle"
-SUPPORTED_PATCHES = {PATCH_NAME_PR7, PATCH_NAME_PR8}
+PATCH_NAME_PR12 = "pr12_view_influence_attribution"
+SUPPORTED_PATCHES = {PATCH_NAME_PR7, PATCH_NAME_PR8, PATCH_NAME_PR12}
 START = "# VIEWTRUST PR7 OBSERVATION START"
 END = "# VIEWTRUST PR7 OBSERVATION END"
 START_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE START"
 END_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE END"
+START_PR12 = "# VIEWTRUST PR12 VIEW INFLUENCE START"
+END_PR12 = "# VIEWTRUST PR12 VIEW INFLUENCE END"
 
 
 HELPER_SNIPPET = f'''
@@ -214,6 +217,45 @@ def _viewtrust_pr8_model_call(model, method_name, **kwargs):
 def _viewtrust_pr8_model_iteration(model):
     return getattr(model, "viewtrust_lifecycle_iteration", "")
 {END_PR8}
+'''
+
+
+VIEW_INFLUENCE_TRAIN_SNIPPET = f'''
+{START_PR12}
+def _viewtrust_pr12_view_name(camera):
+    for attr in ("image_name", "image_path", "uid"):
+        try:
+            value = getattr(camera, attr)
+            if value is not None:
+                return str(value)
+        except Exception:
+            pass
+    return ""
+
+
+def _viewtrust_pr12_camera_uid(camera):
+    try:
+        value = getattr(camera, "uid")
+        if value is not None:
+            return str(value)
+    except Exception:
+        pass
+    return ""
+
+
+def _viewtrust_pr12_view_split(view_name):
+    try:
+        name = str(view_name)
+    except Exception:
+        return ""
+    if name.startswith("train_") or "/train/" in name:
+        return "train"
+    if name.startswith("test_") or "/test/" in name:
+        return "test"
+    if name.startswith("target_") or "/target/" in name:
+        return "target"
+    return ""
+{END_PR12}
 '''
 
 
@@ -506,6 +548,56 @@ def apply_lifecycle_train_patch_text(text: str) -> str:
     return text
 
 
+def apply_view_influence_train_patch_text(text: str) -> str:
+    if START_PR12 in text:
+        raise ValueError("PR12 view influence patch is already applied to train.py")
+    if START not in text or START_PR8 not in text:
+        raise ValueError("PR12 requires PR7 training events and PR8 lifecycle patches first")
+    if "viewtrust_lifecycle_observer" not in text:
+        raise ValueError("PR12 requires PR8 lifecycle observer in train.py")
+
+    text = _insert_after(text, f"{END_PR8}\n", "\n" + VIEW_INFLUENCE_TRAIN_SNIPPET + "\n")
+
+    after_render_count_line = (
+        "        _viewtrust_pr7_call(viewtrust_observer, \"log_gaussian_count\", iteration=iteration, stage=\"after_render\", gaussian_count=viewtrust_gaussian_count_render)\n"
+    )
+    view_identity_snapshot = (
+        f"        {START_PR12}\n"
+        "        viewtrust_pr12_view_name = _viewtrust_pr12_view_name(viewpoint_cam)\n"
+        "        viewtrust_pr12_camera_uid = _viewtrust_pr12_camera_uid(viewpoint_cam)\n"
+        "        viewtrust_pr12_view_split = _viewtrust_pr12_view_split(viewtrust_pr12_view_name)\n"
+        f"        {END_PR12}\n"
+    )
+    text = _insert_after(text, after_render_count_line, view_identity_snapshot)
+
+    metrics_line = (
+        "            _viewtrust_pr7_call(viewtrust_observer, \"log_iteration_metrics\", iteration=iteration, event_type=\"iteration_metrics\", camera_index=vind, camera_image_name=_viewtrust_pr7_camera_name(viewpoint_cam), loss=_viewtrust_pr7_scalar(loss), l1_loss=_viewtrust_pr7_scalar(Ll1), ssim=_viewtrust_pr7_scalar(ssim_value), depth_l1=Ll1depth, iter_time_ms=viewtrust_iter_time_ms, gaussian_count=viewtrust_gaussian_count_render, densification_eligible=viewtrust_densification_eligible, densification_triggered=viewtrust_densification_triggered, opacity_reset_triggered=viewtrust_opacity_reset_triggered, optimizer_step=iteration < opt.iterations, status=\"ok\", **viewtrust_visibility_stats, **viewtrust_radii_stats, **viewtrust_grad_stats)\n"
+    )
+    metrics_line_pr12 = (
+        "            _viewtrust_pr7_call(viewtrust_observer, \"log_iteration_metrics\", iteration=iteration, event_type=\"iteration_metrics\", camera_index=vind, camera_image_name=_viewtrust_pr7_camera_name(viewpoint_cam), view_name=viewtrust_pr12_view_name, camera_uid=viewtrust_pr12_camera_uid, view_split=viewtrust_pr12_view_split, loss=_viewtrust_pr7_scalar(loss), l1_loss=_viewtrust_pr7_scalar(Ll1), ssim=_viewtrust_pr7_scalar(ssim_value), depth_l1=Ll1depth, iter_time_ms=viewtrust_iter_time_ms, gaussian_count=viewtrust_gaussian_count_render, densification_eligible=viewtrust_densification_eligible, densification_triggered=viewtrust_densification_triggered, opacity_reset_triggered=viewtrust_opacity_reset_triggered, optimizer_step=iteration < opt.iterations, status=\"ok\", **viewtrust_visibility_stats, **viewtrust_radii_stats, **viewtrust_grad_stats)\n"
+    )
+    if metrics_line not in text:
+        raise ValueError("PR12 iteration_metrics anchor not found")
+    text = text.replace(metrics_line, metrics_line_pr12, 1)
+
+    lifecycle_iteration_line = "                    gaussians.viewtrust_lifecycle_iteration = iteration\n"
+    source_context = (
+        f"                    {START_PR12}\n"
+        "                    _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"set_source_view_context\", iteration=iteration, view_name=viewtrust_pr12_view_name, camera_uid=viewtrust_pr12_camera_uid, view_split=viewtrust_pr12_view_split, event_context=\"densification_after_view\")\n"
+        f"                    {END_PR12}\n"
+    )
+    text = _insert_after(text, lifecycle_iteration_line, source_context)
+
+    optimizer_header = "            # Optimizer step\n"
+    clear_context = (
+        f"            {START_PR12}\n"
+        "            _viewtrust_pr8_call(viewtrust_lifecycle_observer, \"clear_source_view_context\")\n"
+        f"            {END_PR12}\n"
+    )
+    text = text.replace(optimizer_header, clear_context + optimizer_header, 1)
+    return text
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--third-party-root", required=True, type=Path)
@@ -550,6 +642,32 @@ def main() -> int:
                 "After PR7 is applied, run this script with --patch pr8_gaussian_lifecycle "
                 "to add Gaussian lifecycle hooks."
             ),
+        }
+        if not args.dry_run:
+            if backup_path.exists() and not args.force:
+                raise SystemExit(f"ERROR: backup already exists: {backup_path}")
+            shutil.copy2(train_path, backup_path)
+            train_path.write_text(patched, encoding="utf-8")
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
+    if args.patch == PATCH_NAME_PR12:
+        already_pr12 = START_PR12 in original
+        if already_pr12 and not args.force:
+            raise SystemExit("ERROR: PR12 view influence patch is already applied.")
+        if already_pr12 and args.force:
+            raise SystemExit(
+                "ERROR: --force reapply is intentionally not supported for patched files. Restore backup first."
+            )
+        patched = apply_view_influence_train_patch_text(original)
+        backup_path = train_path.with_name("train.py.viewtrust-pr12-backup")
+        report = {
+            "patch": args.patch,
+            "train_path": str(train_path),
+            "backup_path": str(backup_path),
+            "dry_run": args.dry_run,
+            "changed": patched != original,
+            "train_view_influence_markers_inserted": patched.count(START_PR12),
         }
         if not args.dry_run:
             if backup_path.exists() and not args.force:

@@ -32,6 +32,10 @@ python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
   --third-party-root ./third_party \
   --patch pr8_gaussian_lifecycle
 
+python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
+  --third-party-root ./third_party \
+  --patch pr12_view_influence_attribution
+
 python scripts/third_party/check_gaussian_splatting_observation_patch.py \
   --third-party-root ./third_party \
   --patch pr8_gaussian_lifecycle \
@@ -81,6 +85,20 @@ gaussian_lifecycle_summary.json
 `gaussian_lifecycle_events.csv` records birth and prune/death events.
 `gaussian_lifecycle_final.csv` records one row per known Gaussian ID.
 
+PR12 adds source-view context fields to lifecycle event rows:
+
+```text
+source_iteration
+source_view_name
+source_camera_uid
+source_view_split
+event_context
+```
+
+Birth events use `event_context=densification_after_view` and prune/death
+events use `event_context=prune_after_view` when a sampled-view context is
+available.
+
 ## Invariants
 
 The lifecycle observer checks:
@@ -111,7 +129,8 @@ no duplicate final_index among alive rows
 python scripts/measure/inspect_gaussian_lifecycle.py \
   --run-dir "$RUN_DIR" \
   --require-lifecycle \
-  --require-no-invariant-violations
+  --require-no-invariant-violations \
+  --require-source-view
 ```
 
 ## Lineage
@@ -123,4 +142,5 @@ warning. PR8 does not implement trust scores, view attribution, poison
 detection, or defenses.
 
 PR9 consumes lifecycle summaries and tables for no-op equivalence checks and
-the Priority 0 report. It does not change lifecycle logging behavior.
+the Priority 0 report. PR12 consumes source-view lifecycle context for
+observation-only view influence attribution.

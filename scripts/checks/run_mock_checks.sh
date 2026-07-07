@@ -26,6 +26,9 @@ python scripts/smoke/priority0_report_smoke_test.py
 python scripts/smoke/natural_corruption_generation_smoke_test.py
 python scripts/smoke/natural_corruption_inspector_smoke_test.py
 python scripts/smoke/clean_vs_corrupt_comparison_smoke_test.py
+python scripts/smoke/corruption_manifest_linking_smoke_test.py
+python scripts/smoke/view_influence_table_smoke_test.py
+python scripts/smoke/view_influence_comparison_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"

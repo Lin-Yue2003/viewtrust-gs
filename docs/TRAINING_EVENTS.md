@@ -148,6 +148,18 @@ PR11.1 fixes the edge case where a densification/pruning iteration could mix
 pre-prune radii with a post-prune Gaussian count in one `iteration_metrics`
 row. The observer stores Python scalars only and does not retain tensors.
 
+PR12 adds sampled view identity fields to `iteration_metrics` rows:
+
+```text
+view_name
+camera_uid
+view_split
+```
+
+`view_split` is inferred from view name prefixes such as `train_`, `test_`, and
+`target_` when possible. These fields are used only for observation and table
+joins.
+
 ## Inspect
 
 ```bash
@@ -155,7 +167,8 @@ RUN_DIR=$(find outputs/baseline/chair_clean_gaussian_splatting -mindepth 1 -maxd
 
 python scripts/measure/inspect_training_events.py \
   --run-dir "$RUN_DIR" \
-  --require-events
+  --require-events \
+  --require-view-identity
 
 cat "$RUN_DIR/training_events_summary.json"
 head -20 "$RUN_DIR/tables/training_events.csv"
@@ -176,6 +189,10 @@ max_radii_nonzero_count
 invalid_densification_event_rows
 requested_iterations
 logged_iteration_count
+has_view_identity
+missing_view_identity_rows
+unique_training_view_count
+sampled_view_rows
 ```
 
 `logged_iteration_count` is the count of logged iteration rows, not the total

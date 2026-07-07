@@ -9,11 +9,14 @@ from pathlib import Path
 
 PATCH_NAME_PR7 = "pr7_training_events"
 PATCH_NAME_PR8 = "pr8_gaussian_lifecycle"
-SUPPORTED_PATCHES = {PATCH_NAME_PR7, PATCH_NAME_PR8}
+PATCH_NAME_PR12 = "pr12_view_influence_attribution"
+SUPPORTED_PATCHES = {PATCH_NAME_PR7, PATCH_NAME_PR8, PATCH_NAME_PR12}
 START = "# VIEWTRUST PR7 OBSERVATION START"
 END = "# VIEWTRUST PR7 OBSERVATION END"
 START_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE START"
 END_PR8 = "# VIEWTRUST PR8 GAUSSIAN LIFECYCLE END"
+START_PR12 = "# VIEWTRUST PR12 VIEW INFLUENCE START"
+END_PR12 = "# VIEWTRUST PR12 VIEW INFLUENCE END"
 
 
 def inspect_pr7_patch(third_party_root: Path) -> dict[str, object]:
@@ -87,6 +90,38 @@ def inspect_pr8_patch(third_party_root: Path) -> dict[str, object]:
     }
 
 
+def inspect_pr12_patch(third_party_root: Path) -> dict[str, object]:
+    train_path = third_party_root / "gaussian-splatting" / "train.py"
+    exists = train_path.is_file()
+    text = train_path.read_text(encoding="utf-8") if exists else ""
+    marker_count = text.count(START_PR12)
+    checks = {
+        "has_pr7_dependency": START in text and "VIEWTRUST_ENABLE_TRAINING_EVENTS" in text,
+        "has_pr8_dependency": START_PR8 in text and "VIEWTRUST_ENABLE_GAUSSIAN_LIFECYCLE" in text,
+        "has_pr12_markers": START_PR12 in text and END_PR12 in text,
+        "has_view_name_helper": "_viewtrust_pr12_view_name" in text,
+        "has_camera_uid_helper": "_viewtrust_pr12_camera_uid" in text,
+        "has_view_split_helper": "_viewtrust_pr12_view_split" in text,
+        "logs_training_event_view_name": "view_name=viewtrust_pr12_view_name" in text,
+        "logs_training_event_camera_uid": "camera_uid=viewtrust_pr12_camera_uid" in text,
+        "logs_training_event_view_split": "view_split=viewtrust_pr12_view_split" in text,
+        "sets_lifecycle_source_context": "\"set_source_view_context\"" in text,
+        "clears_lifecycle_source_context": "\"clear_source_view_context\"" in text,
+        "keeps_densify_call": "gaussians.densify_and_prune(" in text,
+        "keeps_optimizer_step": "gaussians.optimizer.step(" in text,
+    }
+    ok = exists and all(checks.values())
+    return {
+        "patch": PATCH_NAME_PR12,
+        "train_path": str(train_path),
+        "exists": exists,
+        "applied": checks["has_pr12_markers"],
+        "marker_count": marker_count,
+        "ok": ok,
+        "checks": checks,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--third-party-root", required=True, type=Path)
@@ -99,11 +134,12 @@ def main() -> int:
     args = parse_args()
     if args.patch not in SUPPORTED_PATCHES:
         raise SystemExit(f"unsupported patch: {args.patch}")
-    report = (
-        inspect_pr7_patch(args.third_party_root)
-        if args.patch == PATCH_NAME_PR7
-        else inspect_pr8_patch(args.third_party_root)
-    )
+    if args.patch == PATCH_NAME_PR7:
+        report = inspect_pr7_patch(args.third_party_root)
+    elif args.patch == PATCH_NAME_PR8:
+        report = inspect_pr8_patch(args.third_party_root)
+    else:
+        report = inspect_pr12_patch(args.third_party_root)
     print(json.dumps(report, indent=2, sort_keys=True))
     if args.require_applied and not report["ok"]:
         return 1

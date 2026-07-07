@@ -31,6 +31,11 @@ LIFECYCLE_EVENT_FIELDS = [
     "death_iteration",
     "birth_type",
     "death_type",
+    "source_iteration",
+    "source_view_name",
+    "source_camera_uid",
+    "source_view_split",
+    "event_context",
     "source_index",
     "target_index",
     "gaussian_count_before",
@@ -215,6 +220,7 @@ class GaussianLifecycleObserver:
         self.densification_birth_count = 0
         self.prune_death_count = 0
         self._pending_prune: dict[str, Any] | None = None
+        self.current_source_context: dict[str, Any] = {}
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.tables_dir.mkdir(parents=True, exist_ok=True)
@@ -277,6 +283,21 @@ class GaussianLifecycleObserver:
 
     def on_after_densification(self, **kwargs: Any) -> None:
         self._safe(lambda: self._reconcile_count(stage="after_densification", **kwargs))
+
+    def set_source_view_context(self, **kwargs: Any) -> None:
+        def op() -> None:
+            self.current_source_context = {
+                "source_iteration": kwargs.get("iteration", ""),
+                "source_view_name": kwargs.get("view_name", ""),
+                "source_camera_uid": kwargs.get("camera_uid", ""),
+                "source_view_split": kwargs.get("view_split", ""),
+                "event_context": kwargs.get("event_context", ""),
+            }
+
+        self._safe(op)
+
+    def clear_source_view_context(self, **kwargs: Any) -> None:
+        self._safe(lambda: self.current_source_context.clear())
 
     def finalize(self, **kwargs: Any) -> dict[str, Any]:
         result = self._safe(lambda: self._finalize_impl(**kwargs), allow_disabled=True)
@@ -539,6 +560,8 @@ class GaussianLifecycleObserver:
             "lifecycle_event_rows": self.lifecycle_event_rows,
             "final_lifecycle_rows": len(self.states),
             "invariant_violations": self.invariant_violations,
+            "lifecycle_events_with_source_view": self._events_with_source_view_count(),
+            "lifecycle_events_missing_source_view": self._events_missing_source_view_count(),
             "warnings": self.warning_messages,
         }
         self.summary_path.write_text(
@@ -622,6 +645,7 @@ class GaussianLifecycleObserver:
         }
 
     def _write_event(self, values: dict[str, Any]) -> None:
+        values = {**self._source_context_for_event(values), **values}
         row = {field: values.get(field, "") for field in LIFECYCLE_EVENT_FIELDS}
         row["run_id"] = self.config.run_id
         row["timestamp_utc"] = row.get("timestamp_utc") or now_utc_iso()
@@ -629,6 +653,39 @@ class GaussianLifecycleObserver:
             writer = csv.DictWriter(handle, fieldnames=LIFECYCLE_EVENT_FIELDS)
             writer.writerow(row)
         self.lifecycle_event_rows += 1
+
+    def _source_context_for_event(self, values: dict[str, Any]) -> dict[str, Any]:
+        if not self.current_source_context:
+            return {}
+        context = dict(self.current_source_context)
+        if not context.get("event_context"):
+            event_type = str(values.get("event_type", ""))
+            context["event_context"] = (
+                "prune_after_view"
+                if event_type == "prune_death"
+                else "densification_after_view"
+                if "birth" in event_type
+                else "sampled_view_context"
+            )
+        return context
+
+    def _events_with_source_view_count(self) -> int:
+        return self._count_event_rows_with_source_view(True)
+
+    def _events_missing_source_view_count(self) -> int:
+        return self._count_event_rows_with_source_view(False)
+
+    def _count_event_rows_with_source_view(self, present: bool) -> int:
+        if not self.events_path.exists():
+            return 0
+        with self.events_path.open(newline="", encoding="utf-8") as handle:
+            rows = csv.DictReader(handle)
+            return sum(
+                1
+                for row in rows
+                if (bool(row.get("source_view_name")) is present)
+                and row.get("event_type") in {"clone_birth", "split_birth", "densification_birth", "prune_death"}
+            )
 
     def _check_invariants(self, expected_count: int | None, stage: str) -> None:
         if expected_count is not None and len(self.current_ids) != expected_count:

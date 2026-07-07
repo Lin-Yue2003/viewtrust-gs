@@ -32,6 +32,9 @@ Priority 0 report smoke test
 natural corruption generation smoke test with a fake clean mini scene
 natural corruption inspector smoke test with a fake generated condition
 clean-vs-corrupt comparison smoke test with fake observed runs
+corruption manifest linking smoke test
+view influence table smoke test
+view influence comparison smoke test
 ```
 
 Commands:
@@ -62,7 +65,10 @@ without touching real `third_party` source. It also runs
 `natural_corruption_inspector_smoke_test.py` on a tiny fake clean mini scene
 without CUDA. It also runs `clean_vs_corrupt_comparison_smoke_test.py`, which
 checks PR10.1 manifest compatibility and PR11 comparison outputs with fake
-observed clean/corrupt runs.
+observed clean/corrupt runs. PR12 adds
+`corruption_manifest_linking_smoke_test.py`,
+`view_influence_table_smoke_test.py`, and
+`view_influence_comparison_smoke_test.py`.
 
 ## Observed Command Checks
 
@@ -332,6 +338,35 @@ alive_final_count == final_gaussian_count
 alive_final_count + dead_final_count == known_gaussian_count
 gaussian_lifecycle_final.csv row count == known_gaussian_count
 no duplicate alive final_index
+```
+
+PR12 source-view validation adds:
+
+```bash
+python scripts/measure/inspect_training_events.py \
+  --run-dir "$RUN_DIR" \
+  --require-events \
+  --require-view-identity
+
+python scripts/measure/inspect_gaussian_lifecycle.py \
+  --run-dir "$RUN_DIR" \
+  --require-lifecycle \
+  --require-no-invariant-violations \
+  --require-source-view
+```
+
+PR12 view influence table generation is read-only:
+
+```bash
+python scripts/measure/build_view_influence_table.py \
+  --run-dir "$RUN_DIR" \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --scene chair \
+  --condition corrupt_occluder \
+  --output-dir outputs/reports/view_influence_corrupt_occluder_$(date +%Y%m%dT%H%M%S) \
+  --require-view-identity \
+  --require-source-view \
+  --write-markdown
 ```
 
 Recommended server validation flow:

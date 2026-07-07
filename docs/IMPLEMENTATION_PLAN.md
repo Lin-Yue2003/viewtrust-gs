@@ -309,3 +309,15 @@ Gaussian lifecycle logs, and optional PR6 view metrics. It writes JSON, CSV,
 artifact manifest, and Markdown reports. It does not detect corruption,
 classify trust, implement a ViewTrust score, implement a defense, or change
 training behavior.
+
+PR11.2 fixes corruption manifest linking in clean-vs-corrupt comparison
+reports. The comparison script can resolve corruption summaries from run
+metadata, explicit condition roots, or `--data-root --scene --corruption-condition`.
+
+PR12 View-to-Gaussian Influence Attribution adds sampled view identity to
+training event logs, source-view context to lifecycle birth/prune events, and
+read-only builders for `view_influence.csv`,
+`view_lifecycle_attribution.csv`, and `view_iteration_events.csv`. It is
+temporal/source-view attribution only; it does not compute trust scores,
+classify views, defend, suppress updates, gate densification, or change
+training behavior.

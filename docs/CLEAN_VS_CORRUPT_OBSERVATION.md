@@ -82,6 +82,8 @@ python scripts/train/run_clean_chair_baseline.py \
 python scripts/measure/compare_clean_corrupt_observations.py \
   --clean-run-dir "$CLEAN_RUN_DIR" \
   --corrupt-run-dir "$CORRUPT_RUN_DIR" \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --scene chair \
   --corruption-condition corrupt_occluder \
   --output-dir outputs/reports/clean_vs_corrupt_occluder_$(date +%Y%m%dT%H%M%S) \
   --require-observation-invariants \
@@ -95,7 +97,14 @@ clean_vs_corrupt_summary.json
 clean_vs_corrupt_report.md
 clean_vs_corrupt_metrics.csv
 clean_vs_corrupt_artifact_manifest.csv
+view_corruption_effects.csv
 ```
+
+PR11.2 resolves corruption manifests from the corrupt run metadata
+`prepared_scene_root`, explicit `--corrupt-condition-root`, or
+`--data-root --scene --corruption-condition`. When per-view metrics are
+available, `view_corruption_effects.csv` joins clean/corrupt view metrics with
+`corruption_manifest.csv`.
 
 ## Report Interpretation
 
