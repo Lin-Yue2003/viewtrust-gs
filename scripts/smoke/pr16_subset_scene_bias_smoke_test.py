@@ -291,6 +291,50 @@ def main() -> int:
         assert '"$VIEW_INFLUENCE_COMPARISON_DIR"' not in run_commands
         assert "Default mode is TODO-only" not in run_commands
         assert "full training, clean/corrupt view influence" not in run_commands
+        validation_root = root / "fake_corruption_condition"
+        _write_json(
+            validation_root / "manifest.json",
+            {
+                "scene": "chair",
+                "condition": "corrupt_occluder_seed_20260708",
+                "train_view_count": 20,
+                "test_view_count": 5,
+                "target_view_count": 3,
+                "selected_train_views": ["train_a"],
+                "corrupted_image_count": 1,
+            },
+        )
+        _write_json(
+            validation_root / "corruption_summary.json",
+            {
+                "scene": "chair",
+                "output_condition": "corrupt_occluder_seed_20260708",
+                "train_view_count": 20,
+                "test_view_count": 5,
+                "target_view_count": 3,
+                "selected_train_views": ["train_a"],
+                "corrupted_image_count": 1,
+            },
+        )
+        validation_result = _run(
+            [
+                "bash",
+                "-c",
+                (
+                    f"source {str(plan_dir / 'pr16_run_commands.sh')!r}; "
+                    f"validate_corruption_condition chair original corrupt_occluder_seed_20260708 "
+                    f"{str(validation_root)!r} train_a"
+                ),
+            ],
+            env={
+                "PR16_EXECUTE_HEAVY_STAGES": "0",
+                "VIEWTRUST_REPORT_ROOT": str(command_reports_root),
+            },
+        )
+        if validation_result.returncode != 0:
+            print(validation_result.stdout)
+            print(validation_result.stderr, file=sys.stderr)
+            return validation_result.returncode
         command_result = _run(
             ["bash", str(plan_dir / "pr16_run_commands.sh")],
             env={
