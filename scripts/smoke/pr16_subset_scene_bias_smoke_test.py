@@ -273,6 +273,21 @@ def main() -> int:
         assert {"chair", "drum"}.issubset({row["scene"] for row in manifest})
         assert {"20260708", "20260709"}.issubset({row["subset_seed"] for row in manifest if row["subset_seed"]})
         _assert_self_manifest(plan_dir / "artifact_manifest.csv")
+        run_commands = (plan_dir / "pr16_run_commands.sh").read_text(encoding="utf-8")
+        assert '"$CLEAN_VIEW_INFLUENCE_DIR"' not in run_commands
+        assert '"$CORRUPT_VIEW_INFLUENCE_DIR"' not in run_commands
+        assert '"$VIEW_INFLUENCE_COMPARISON_DIR"' not in run_commands
+        assert "CLEAN_VIEW_INFLUENCE_DIR" not in run_commands
+        assert "CORRUPT_VIEW_INFLUENCE_DIR" not in run_commands
+        assert "VIEW_INFLUENCE_COMPARISON_DIR" not in run_commands
+        command_result = _run(["bash", str(plan_dir / "pr16_run_commands.sh")])
+        if command_result.returncode != 0:
+            print(command_result.stdout)
+            print(command_result.stderr, file=sys.stderr)
+            return command_result.returncode
+        assert "TODO PR16" in command_result.stdout
+        assert "heavy stages disabled" in command_result.stdout
+        assert "expected_output_dir:" in command_result.stdout
 
         analyzer = _run(
             [

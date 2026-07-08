@@ -60,6 +60,14 @@ Seeded subsets are sampled only from discovered training views. The same seed
 and train-view list produce the same subset hash. Different seed collisions are
 reported as warnings.
 
+`pr16_run_commands.sh` is executable in TODO-only mode by default. It prints
+the scene, subset, condition, missing stage, and expected PR16 input directory
+for each matrix cell, then exits successfully. Set
+`PR16_EXECUTE_HEAVY_STAGES=1` only after reviewing the plan; the generated
+script may prepare natural corruption data, but it still marks training, view
+influence extraction, comparison, offline signal generation, and metadata
+validation as TODO unless those stages have been made explicit.
+
 ## Analyzer
 
 The analyzer consumes existing PR13 / PR14 / PR15-style offline outputs across
