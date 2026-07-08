@@ -22,12 +22,33 @@ from viewtrust.analysis.offline_multi_condition import (
     discover_offline_signal_dirs,
     validate_offline_signal_dir,
 )
+from viewtrust.analysis.offline_rank_consistency import (
+    build_component_condition_summary,
+    build_component_gap_table,
+    build_component_win_table,
+    build_corrupted_view_rank_distribution,
+    build_cross_condition_view_rank_table,
+    build_false_positive_topk_views,
+    build_repeated_top_views,
+    build_summary_json,
+    find_condition_signal_dir,
+    write_artifact_manifest,
+    write_rank_consistency_report,
+)
 from viewtrust.analysis.statistics import NumericSummary, summarize_numbers, summarize_table
 from viewtrust.analysis.tables import write_csv_table
 
 __all__ = [
     "NumericSummary",
     "aggregate_condition_results",
+    "build_component_condition_summary",
+    "build_component_gap_table",
+    "build_component_win_table",
+    "build_corrupted_view_rank_distribution",
+    "build_cross_condition_view_rank_table",
+    "build_false_positive_topk_views",
+    "build_repeated_top_views",
+    "build_summary_json",
     "compute_condition_ranking",
     "compute_failure_cases",
     "compute_ablation_metrics",
@@ -35,6 +56,7 @@ __all__ = [
     "compute_signal_components",
     "condition_result_from_signal_dir",
     "discover_offline_signal_dirs",
+    "find_condition_signal_dir",
     "mad",
     "positive_part",
     "precision_at_k",
@@ -47,5 +69,7 @@ __all__ = [
     "summarize_numbers",
     "summarize_table",
     "validate_offline_signal_dir",
+    "write_artifact_manifest",
     "write_csv_table",
+    "write_rank_consistency_report",
 ]

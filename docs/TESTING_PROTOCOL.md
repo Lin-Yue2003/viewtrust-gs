@@ -35,6 +35,7 @@ clean-vs-corrupt comparison smoke test with fake observed runs
 corruption manifest linking smoke test
 view influence table smoke test
 view influence comparison smoke test
+offline ViewTrust rank consistency smoke test
 ```
 
 Commands:
@@ -82,6 +83,11 @@ the newest PR13 output per condition, helper-generated
 `offline_viewtrust_<condition>_pr14_input` directories, partial
 missing-condition behavior, strict missing-condition failure, cross-condition
 outputs, failure cases, report wording, and artifact manifest self-validation.
+PR15 adds `offline_viewtrust_rank_consistency_smoke_test.py`, which validates
+cross-condition repeated top views, false positive top-k summaries, corrupted
+view rank distributions, component diagnosis tables, offline-only summary
+fields, report wording, and artifact manifest self-validation using tiny fake
+PR14 and per-condition PR13 outputs.
 
 ## Observed Command Checks
 
@@ -155,6 +161,7 @@ inspecting real PR10 natural corruption chair conditions
 training a natural corruption chair condition
 compare_clean_corrupt_observations.py for clean vs natural-corrupt observed runs
 future multi-condition clean-vs-corrupt suites
+offline rank consistency analysis on real PR14.1 outputs
 ```
 
 Command:
@@ -448,6 +455,45 @@ uses_corruption_labels_for_scoring = false
 uses_corruption_labels_for_evaluation = true
 training_intervention = false
 defense_enabled = false
+```
+
+## PR15 Offline Rank Consistency Diagnosis
+
+PR15 rank consistency analysis is read-only:
+
+```bash
+python scripts/measure/analyze_offline_viewtrust_rank_consistency.py \
+  --multi-condition-dir "$PR14_FULL_DIR" \
+  --input-root outputs/reports \
+  --scene chair \
+  --conditions corrupt_occluder corrupt_blur corrupt_exposure corrupt_color_shift corrupt_noise corrupt_mixed \
+  --top-k 5 \
+  --output-dir "$PR15_DIR" \
+  --write-markdown
+```
+
+LOCAL-SAFE:
+
+```bash
+python scripts/smoke/offline_viewtrust_rank_consistency_smoke_test.py
+```
+
+SERVER-REQUIRED:
+
+```text
+Run the PR15 analyzer on real PR14.1 outputs after all per-condition PR13 /
+PR14-input directories have been produced on the server.
+```
+
+Expected PR15 summary invariants:
+
+```text
+schema_name = viewtrust.offline_signal.rank_consistency.summary
+observation_only = true
+training_intervention = false
+defense_enabled = false
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
 ```
 
 Recommended server validation flow:

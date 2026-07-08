@@ -214,6 +214,10 @@ PR8: Gaussian lifecycle logging
 PR9: no-op equivalence and Priority 0 report
 PR10: natural corruption condition generation
 PR11: clean-vs-corrupt observation comparison
+PR12: view-to-Gaussian influence attribution
+PR13: offline ViewTrust signal design
+PR14: multi-condition offline ViewTrust signal validation
+PR15: cross-condition rank consistency and component diagnosis
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -349,3 +353,13 @@ It supports partial validation when only some condition outputs exist and
 strict validation with `--require-all-conditions`. PR14 does not retrain,
 render, modify `third_party`, implement a defense, implement a training-time
 trust score, reweight loss, suppress updates, or gate densification.
+
+PR15 Cross-condition Rank Consistency and Component Diagnosis consumes existing
+PR14.1 multi-condition outputs plus per-condition PR13 / PR14-input offline
+signal directories. It writes repeated-top-view diagnostics, false-positive
+top-k summaries, corrupted-view rank distributions, component win/gap tables,
+a cross-condition summary, a Markdown report, and a two-pass artifact
+manifest. PR15 is offline observation only: it does not change PR13 scoring,
+PR14 aggregation metrics, training behavior, rendering behavior,
+`third_party`, trust-aware training, defense behavior, update suppression,
+loss reweighting, or densification gating.
