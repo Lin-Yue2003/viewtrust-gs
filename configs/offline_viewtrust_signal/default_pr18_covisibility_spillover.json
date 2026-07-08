@@ -1,0 +1,26 @@
+{
+  "schema_name": "viewtrust.pr18.covisibility_spillover.config",
+  "schema_version": 1,
+  "camera_neighbor": {
+    "neighbor_k": 3,
+    "center_distance_weight": 1.0,
+    "rotation_distance_weight": 1.0,
+    "median_nn_distance_factor": 1.5
+  },
+  "index_neighbor": {
+    "max_index_gap": 2,
+    "use_as_auxiliary_only": true
+  },
+  "gaussian_support": {
+    "evidence_jaccard_threshold": 0.25
+  },
+  "lift_pattern": {
+    "low_prior_quantile": 0.5,
+    "high_delta_quantile": 0.75,
+    "high_rank_lift_quantile": 0.75
+  },
+  "labels": {
+    "use_corruption_labels_for_scoring": false,
+    "use_corruption_labels_for_evaluation": true
+  }
+}

@@ -58,6 +58,18 @@ from viewtrust.analysis.clean_prior_normalization import (
     rank_normalized_rows,
     resolve_artifact_manifest_paths,
 )
+from viewtrust.analysis.covisibility_spillover import (
+    classify_spillover_candidates,
+    compute_camera_pair_distances,
+    compute_corrupted_neighbor_features,
+    compute_gaussian_support_overlap_best_effort,
+    compute_index_neighbor_features,
+    compute_spillover_summary,
+    load_camera_poses,
+    load_pr16_plan,
+    load_pr17_rankings,
+    load_pr17_rows,
+)
 from viewtrust.analysis.statistics import NumericSummary, summarize_numbers, summarize_table
 from viewtrust.analysis.tables import write_csv_table
 
@@ -88,14 +100,24 @@ __all__ = [
     "compute_view_identity_diagnosis",
     "compute_ablation_metrics",
     "compute_group_metrics",
+    "compute_camera_pair_distances",
+    "compute_corrupted_neighbor_features",
+    "compute_gaussian_support_overlap_best_effort",
+    "compute_index_neighbor_features",
     "compute_signal_components",
+    "compute_spillover_summary",
     "condition_result_from_signal_dir",
     "discover_offline_signal_dirs",
     "discover_pr16_condition_output",
     "discover_train_views",
     "find_condition_signal_dir",
     "generate_seeded_subset",
+    "classify_spillover_candidates",
+    "load_camera_poses",
     "load_offline_signal_dir",
+    "load_pr16_plan",
+    "load_pr17_rankings",
+    "load_pr17_rows",
     "mad",
     "positive_part",
     "precision_at_k",

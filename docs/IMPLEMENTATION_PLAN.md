@@ -388,3 +388,13 @@ two-pass artifact manifest. PR17 is offline analysis only: it does not change
 raw PR13 scoring, PR14 aggregation, PR15 or PR16 behavior, training, rendering,
 `third_party`, loss reweighting, view rejection, update suppression,
 densification gating, or any defense behavior.
+
+PR18 Co-visibility Spillover Diagnosis adds an offline explanation layer for
+remaining PR17 normalized false positives. It uses clean training camera
+transforms, PR16 corrupted-subset manifests, PR17 normalized rows, and
+best-effort view/Gaussian support artifacts to separate stable clean-prior
+false positives from co-visible collateral views and unexplained false
+positives. PR18 does not tune PR17 scores, does not use corruption labels for
+scoring, and does not change training, rendering, `third_party`, PR13 scoring,
+PR14 aggregation, PR15 analysis, PR16 behavior, PR17 normalization, or any
+defense/intervention behavior.

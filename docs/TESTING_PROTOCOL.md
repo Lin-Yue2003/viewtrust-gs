@@ -98,6 +98,9 @@ PR17 adds `clean_prior_normalized_viewtrust_smoke_test.py`, which validates
 clean-prior normalization with fake offline signal directories, artifact
 manifest input resolution, missing-output reporting, false-positive reduction,
 and offline-only label-use guarantees.
+PR18 adds `pr18_covisibility_spillover_smoke_test.py`, which validates
+camera-neighbor spillover diagnosis with fake PR17 rows, fake PR16 subset
+metadata, synthetic camera transforms, and offline-only label-use guarantees.
 
 ## Observed Command Checks
 
@@ -586,6 +589,43 @@ Expected PR17 summary invariants:
 
 ```text
 schema_name = viewtrust.pr17.clean_prior_normalized.summary
+observation_only = true
+training_intervention = false
+defense_enabled = false
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
+```
+
+## PR18 Co-visibility Spillover Diagnosis
+
+PR18 is offline analysis only. It diagnoses remaining normalized false
+positives without changing PR17 scores or any training behavior:
+
+```bash
+python scripts/measure/analyze_pr18_covisibility_spillover.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --input-root outputs/reports \
+  --plan-dir "$PR16_PLAN_ANALYSIS_DIR" \
+  --pr17-dir "$PR17_DIR" \
+  --output-dir "$PR18_DIR" \
+  --scenes chair drums \
+  --conditions corrupt_occluder corrupt_noise corrupt_mixed \
+  --subset-names original seed_20260710 \
+  --top-k 5 \
+  --allow-missing \
+  --write-markdown
+```
+
+LOCAL-SAFE:
+
+```bash
+python scripts/smoke/pr18_covisibility_spillover_smoke_test.py
+```
+
+Expected PR18 summary invariants:
+
+```text
+schema_name = viewtrust.pr18.covisibility_spillover.summary
 observation_only = true
 training_intervention = false
 defense_enabled = false
