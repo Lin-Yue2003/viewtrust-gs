@@ -35,6 +35,19 @@ from viewtrust.analysis.offline_rank_consistency import (
     write_artifact_manifest,
     write_rank_consistency_report,
 )
+from viewtrust.analysis.subset_scene_bias import (
+    build_condition_matrix,
+    build_pr16_summary,
+    build_scene_bias_summary,
+    build_scene_subset_condition_results,
+    build_subset_bias_summary,
+    build_subset_manifest,
+    build_view_identity_bias_table,
+    discover_pr16_condition_output,
+    discover_train_views,
+    generate_seeded_subset,
+    stable_hash_view_list,
+)
 from viewtrust.analysis.statistics import NumericSummary, summarize_numbers, summarize_table
 from viewtrust.analysis.tables import write_csv_table
 
@@ -49,6 +62,13 @@ __all__ = [
     "build_false_positive_topk_views",
     "build_repeated_top_views",
     "build_summary_json",
+    "build_condition_matrix",
+    "build_pr16_summary",
+    "build_scene_bias_summary",
+    "build_scene_subset_condition_results",
+    "build_subset_bias_summary",
+    "build_subset_manifest",
+    "build_view_identity_bias_table",
     "compute_condition_ranking",
     "compute_failure_cases",
     "compute_ablation_metrics",
@@ -56,7 +76,10 @@ __all__ = [
     "compute_signal_components",
     "condition_result_from_signal_dir",
     "discover_offline_signal_dirs",
+    "discover_pr16_condition_output",
+    "discover_train_views",
     "find_condition_signal_dir",
+    "generate_seeded_subset",
     "mad",
     "positive_part",
     "precision_at_k",
@@ -66,6 +89,7 @@ __all__ = [
     "robust_z_scores",
     "safe_divide",
     "safe_float",
+    "stable_hash_view_list",
     "summarize_numbers",
     "summarize_table",
     "validate_offline_signal_dir",

@@ -36,6 +36,7 @@ corruption manifest linking smoke test
 view influence table smoke test
 view influence comparison smoke test
 offline ViewTrust rank consistency smoke test
+PR16 subset and scene bias smoke test
 ```
 
 Commands:
@@ -88,6 +89,11 @@ cross-condition repeated top views, false positive top-k summaries, corrupted
 view rank distributions, component diagnosis tables, offline-only summary
 fields, report wording, and artifact manifest self-validation using tiny fake
 PR14 and per-condition PR13 outputs.
+PR16 adds `pr16_subset_scene_bias_smoke_test.py`, which validates
+deterministic subset planning, chair/drum scene coverage, subset-seed manifests,
+view identity bias rows, repeated false positives, component comparisons,
+offline-only report wording, and artifact manifest self-validation with fake
+offline outputs.
 
 ## Observed Command Checks
 
@@ -162,6 +168,7 @@ training a natural corruption chair condition
 compare_clean_corrupt_observations.py for clean vs natural-corrupt observed runs
 future multi-condition clean-vs-corrupt suites
 offline rank consistency analysis on real PR14.1 outputs
+PR16 planner and analyzer on real chair/drum subset outputs
 ```
 
 Command:
@@ -489,6 +496,58 @@ Expected PR15 summary invariants:
 
 ```text
 schema_name = viewtrust.offline_signal.rank_consistency.summary
+observation_only = true
+training_intervention = false
+defense_enabled = false
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
+```
+
+## PR16 Subset and Scene Bias Probe
+
+PR16 planning and analysis are offline and observation-only:
+
+```bash
+python scripts/experiments/plan_pr16_subset_scene_bias_probe.py \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --output-dir "$PR16_PLAN_DIR" \
+  --scenes chair drum \
+  --conditions corrupt_occluder corrupt_noise corrupt_mixed \
+  --subset-names original seed_20260708 seed_20260709 \
+  --subset-seeds 20260708 20260709 \
+  --corrupted-view-count 4 \
+  --top-k 5 \
+  --write-commands
+
+python scripts/measure/analyze_pr16_subset_scene_bias.py \
+  --input-root outputs/reports \
+  --plan-dir "$PR16_PLAN_DIR" \
+  --output-dir "$PR16_ANALYSIS_DIR" \
+  --scenes chair drum \
+  --conditions corrupt_occluder corrupt_noise corrupt_mixed \
+  --subset-names original seed_20260708 seed_20260709 \
+  --top-k 5 \
+  --write-markdown
+```
+
+LOCAL-SAFE:
+
+```bash
+python scripts/smoke/pr16_subset_scene_bias_smoke_test.py
+```
+
+SERVER-REQUIRED:
+
+```text
+Run the PR16 analyzer on real chair/drum, subset, and condition outputs after
+the corresponding PR13 / PR14-input offline signal directories have been
+created.
+```
+
+Expected PR16 summary invariants:
+
+```text
+schema_name = viewtrust.pr16.subset_scene_bias.summary
 observation_only = true
 training_intervention = false
 defense_enabled = false

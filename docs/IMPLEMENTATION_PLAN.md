@@ -218,6 +218,7 @@ PR12: view-to-Gaussian influence attribution
 PR13: offline ViewTrust signal design
 PR14: multi-condition offline ViewTrust signal validation
 PR15: cross-condition rank consistency and component diagnosis
+PR16: subset and scene bias probe
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -363,3 +364,15 @@ manifest. PR15 is offline observation only: it does not change PR13 scoring,
 PR14 aggregation metrics, training behavior, rendering behavior,
 `third_party`, trust-aware training, defense behavior, update suppression,
 loss reweighting, or densification gating.
+
+PR16 Subset and Scene Bias Probe adds offline planning and analysis around
+fixed corrupted-subset bias, view identity bias, and chair-vs-drum scene bias.
+The planner writes deterministic corrupted subset manifests, seed
+reproducibility summaries, condition matrices, and a command guide without
+running heavy stages. The analyzer consumes existing PR13 / PR14 / PR15-style
+outputs across scene, subset, and condition to write subset summaries, scene
+summaries, view identity bias diagnostics, repeated false-positive tables,
+component comparisons, a Markdown report, and a two-pass artifact manifest.
+PR16 does not change PR13 scoring, PR14 aggregation, PR15 behavior, training,
+rendering, `third_party`, trust-aware training, defense behavior, loss
+reweighting, update suppression, or densification gating.

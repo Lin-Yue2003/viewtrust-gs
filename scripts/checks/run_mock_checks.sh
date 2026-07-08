@@ -35,6 +35,7 @@ python scripts/smoke/view_influence_comparison_smoke_test.py
 python scripts/smoke/offline_viewtrust_signals_smoke_test.py
 python scripts/smoke/offline_viewtrust_multi_condition_smoke_test.py
 python scripts/smoke/offline_viewtrust_rank_consistency_smoke_test.py
+python scripts/smoke/pr16_subset_scene_bias_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"
