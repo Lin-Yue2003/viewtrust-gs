@@ -268,6 +268,40 @@ def main() -> int:
         top_signal = signals[0]
         if abs(float(top_signal["offline_viewtrust_risk"]) - float(top_signal["prune_component"])) > 1e-9:
             raise ValueError("custom prune-only config weight was not honored")
+        manifest_rows = list(
+            csv.DictReader(
+                (output_dir / "offline_viewtrust_artifact_manifest.csv").open(
+                    newline="",
+                    encoding="utf-8",
+                )
+            )
+        )
+        relative_paths = {row.get("relative_path") for row in manifest_rows}
+        required_outputs = {
+            "offline_viewtrust_summary.json",
+            "offline_viewtrust_signals.csv",
+            "offline_viewtrust_rankings.csv",
+            "offline_viewtrust_group_metrics.csv",
+            "offline_viewtrust_signal_ablation.csv",
+            "offline_viewtrust_config.json",
+            "offline_viewtrust_report.md",
+            "offline_viewtrust_artifact_manifest.csv",
+        }
+        if not required_outputs.issubset(relative_paths):
+            raise ValueError("artifact manifest missing PR13 output relative paths")
+        if "input_clean/view_influence.csv" not in relative_paths:
+            raise ValueError("artifact manifest missing stable input relative path")
+        if "path" not in manifest_rows[0]:
+            raise ValueError("artifact manifest should keep full path column")
+
+        report = (output_dir / "offline_viewtrust_report.md").read_text(encoding="utf-8")
+        report_lower = report.lower()
+        for phrase in ("offline", "not a trust score", "not a defense"):
+            if phrase not in report_lower:
+                raise ValueError(f"report missing required phrase: {phrase}")
+        for phrase in ("detected poison", "defense success", "training-time trust score", "rejected view"):
+            if phrase in report_lower:
+                raise ValueError(f"report contains forbidden phrase: {phrase}")
 
     print("offline ViewTrust signals smoke test ok")
     return 0

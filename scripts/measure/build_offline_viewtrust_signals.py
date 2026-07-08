@@ -85,34 +85,35 @@ def _artifact_manifest_rows(
     output_dir: Path,
 ) -> list[dict[str, Any]]:
     inputs = [
-        (clean_dir / "view_influence_summary.json", True, "input_clean"),
-        (clean_dir / "view_influence.csv", True, "input_clean"),
-        (clean_dir / "view_lifecycle_attribution.csv", False, "input_clean"),
-        (clean_dir / "view_iteration_events.csv", False, "input_clean"),
-        (clean_dir / "view_influence_report.md", False, "input_clean"),
-        (corrupt_dir / "view_influence_summary.json", True, "input_corrupt"),
-        (corrupt_dir / "view_influence.csv", True, "input_corrupt"),
-        (corrupt_dir / "view_lifecycle_attribution.csv", False, "input_corrupt"),
-        (corrupt_dir / "view_iteration_events.csv", False, "input_corrupt"),
-        (corrupt_dir / "view_influence_report.md", False, "input_corrupt"),
-        (comparison_dir / "view_influence_comparison_summary.json", True, "input_comparison"),
-        (comparison_dir / "view_influence_comparison.csv", True, "input_comparison"),
-        (comparison_dir / "view_influence_comparison_report.md", False, "input_comparison"),
+        ("input_clean/view_influence_summary.json", clean_dir / "view_influence_summary.json", True, "input_clean"),
+        ("input_clean/view_influence.csv", clean_dir / "view_influence.csv", True, "input_clean"),
+        ("input_clean/view_lifecycle_attribution.csv", clean_dir / "view_lifecycle_attribution.csv", False, "input_clean"),
+        ("input_clean/view_iteration_events.csv", clean_dir / "view_iteration_events.csv", False, "input_clean"),
+        ("input_clean/view_influence_report.md", clean_dir / "view_influence_report.md", False, "input_clean"),
+        ("input_corrupt/view_influence_summary.json", corrupt_dir / "view_influence_summary.json", True, "input_corrupt"),
+        ("input_corrupt/view_influence.csv", corrupt_dir / "view_influence.csv", True, "input_corrupt"),
+        ("input_corrupt/view_lifecycle_attribution.csv", corrupt_dir / "view_lifecycle_attribution.csv", False, "input_corrupt"),
+        ("input_corrupt/view_iteration_events.csv", corrupt_dir / "view_iteration_events.csv", False, "input_corrupt"),
+        ("input_corrupt/view_influence_report.md", corrupt_dir / "view_influence_report.md", False, "input_corrupt"),
+        ("input_comparison/view_influence_comparison_summary.json", comparison_dir / "view_influence_comparison_summary.json", True, "input_comparison"),
+        ("input_comparison/view_influence_comparison.csv", comparison_dir / "view_influence_comparison.csv", True, "input_comparison"),
+        ("input_comparison/view_influence_comparison_report.md", comparison_dir / "view_influence_comparison_report.md", False, "input_comparison"),
     ]
     outputs = [
-        output_dir / "offline_viewtrust_summary.json",
-        output_dir / "offline_viewtrust_signals.csv",
-        output_dir / "offline_viewtrust_rankings.csv",
-        output_dir / "offline_viewtrust_group_metrics.csv",
-        output_dir / "offline_viewtrust_signal_ablation.csv",
-        output_dir / "offline_viewtrust_config.json",
-        output_dir / "offline_viewtrust_report.md",
-        output_dir / "offline_viewtrust_artifact_manifest.csv",
+        "offline_viewtrust_summary.json",
+        "offline_viewtrust_signals.csv",
+        "offline_viewtrust_rankings.csv",
+        "offline_viewtrust_group_metrics.csv",
+        "offline_viewtrust_signal_ablation.csv",
+        "offline_viewtrust_config.json",
+        "offline_viewtrust_report.md",
+        "offline_viewtrust_artifact_manifest.csv",
     ]
     rows = []
-    for path, required, group in inputs:
+    for relative_path, path, required, group in inputs:
         rows.append(
             {
+                "relative_path": relative_path,
                 "path": str(path),
                 "exists": str(path.exists()).lower(),
                 "file_type": path.suffix.lstrip("."),
@@ -121,9 +122,11 @@ def _artifact_manifest_rows(
                 "artifact_group": group,
             }
         )
-    for path in outputs:
+    for relative_path in outputs:
+        path = output_dir / relative_path
         rows.append(
             {
+                "relative_path": relative_path,
                 "path": str(path),
                 "exists": str(path.exists()).lower(),
                 "file_type": path.suffix.lstrip("."),
@@ -406,6 +409,7 @@ def _markdown(summary: dict[str, Any], ranking_rows: list[dict[str, Any]], ablat
             "# Offline ViewTrust Signal Report",
             "",
             "This report proposes offline candidate ViewTrust signals. The signal is not used during training.",
+            "This offline candidate signal is not a trust score used during training.",
             "Corruption labels are used only after scoring for evaluation.",
             "A high offline risk score does not prove maliciousness. This is not a defense and not a poison classifier.",
             "",
@@ -447,7 +451,7 @@ def _markdown(summary: dict[str, Any], ranking_rows: list[dict[str, Any]], ablat
             "",
             "## Interpretation Guidance",
             "- Use careful language: candidate offline signal, lifecycle anomaly ranking, and post-hoc evidence.",
-            "- Do not describe this as detection, defense success, or automatic rejection.",
+            "- Do not describe this as detection, operational defense, or view rejection.",
             "",
             "## Known Limitations",
             "- PR13 does not convert temporal source-view attribution into causal attribution.",
@@ -580,7 +584,15 @@ def build_offline_viewtrust_signals(
     _write_csv(
         output_dir / "offline_viewtrust_artifact_manifest.csv",
         manifest_rows,
-        ["path", "exists", "file_type", "size_bytes", "required", "artifact_group"],
+        [
+            "relative_path",
+            "path",
+            "exists",
+            "file_type",
+            "size_bytes",
+            "required",
+            "artifact_group",
+        ],
     )
     if not quiet:
         print(f"offline ViewTrust signal rows: {len(signal_rows)}", file=sys.stderr)
