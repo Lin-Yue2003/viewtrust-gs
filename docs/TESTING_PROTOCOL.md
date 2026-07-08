@@ -68,7 +68,11 @@ checks PR10.1 manifest compatibility and PR11 comparison outputs with fake
 observed clean/corrupt runs. PR12 adds
 `corruption_manifest_linking_smoke_test.py`,
 `view_influence_table_smoke_test.py`, and
-`view_influence_comparison_smoke_test.py`.
+`view_influence_comparison_smoke_test.py`. PR12.1 adds
+`training_split_protocol_smoke_test.py`,
+`view_influence_table_performance_smoke_test.py`, and
+`view_influence_summary_schema_smoke_test.py`; it also extends
+`training_event_sanity_smoke_test.py` to verify train-only sampling checks.
 
 ## Observed Command Checks
 
@@ -346,7 +350,8 @@ PR12 source-view validation adds:
 python scripts/measure/inspect_training_events.py \
   --run-dir "$RUN_DIR" \
   --require-events \
-  --require-view-identity
+  --require-view-identity \
+  --require-train-only-sampling
 
 python scripts/measure/inspect_gaussian_lifecycle.py \
   --run-dir "$RUN_DIR" \
@@ -366,8 +371,17 @@ python scripts/measure/build_view_influence_table.py \
   --output-dir outputs/reports/view_influence_corrupt_occluder_$(date +%Y%m%dT%H%M%S) \
   --require-view-identity \
   --require-source-view \
+  --progress-interval-rows 50000 \
   --write-markdown
 ```
+
+PR12.1 requires split-correct training runs. The baseline wrapper passes
+official Gaussian Splatting `--eval` by default, and
+`inspect_training_events.py --require-train-only-sampling` should report zero
+unexpected non-train sampled views. The view influence builder reports
+`runtime_s`, per-stage `timing`, `input_rows`, throughput estimates, and
+split-aware sampled-view counts in `view_influence_summary.json`; use `--quiet`
+when progress logs are not wanted.
 
 Recommended server validation flow:
 

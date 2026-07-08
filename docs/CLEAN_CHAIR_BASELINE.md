@@ -150,6 +150,9 @@ python scripts/train/run_clean_chair_baseline.py \
 ```
 
 The wrapper sets `CUDA_VISIBLE_DEVICES` for the observed child process.
+For Blender/NeRF Synthetic scenes, the wrapper also passes official 3DGS
+`--eval` by default so test cameras stay held out. Use `--no-eval-split` only
+for explicit diagnostics of the old merged-camera behavior.
 
 To run a natural corruption condition without changing training behavior:
 

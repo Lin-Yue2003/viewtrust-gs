@@ -49,6 +49,13 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
             "has_view_identity": False,
             "missing_view_identity_rows": None,
             "unique_training_view_count": None,
+            "unique_sampled_view_count": None,
+            "sampled_train_view_count": None,
+            "sampled_test_view_count": None,
+            "sampled_target_view_count": None,
+            "sampled_unknown_view_count": None,
+            "unexpected_non_train_sampled_view_count": None,
+            "unexpected_non_train_sampled_views": [],
             "sampled_view_rows": None,
         }
 
@@ -60,6 +67,11 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
     sampled_view_rows = 0
     missing_view_identity_rows = 0
     training_view_names: set[str] = set()
+    sampled_view_names: set[str] = set()
+    sampled_train_views: set[str] = set()
+    sampled_test_views: set[str] = set()
+    sampled_target_views: set[str] = set()
+    sampled_unknown_views: set[str] = set()
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             event_type = row.get("event_type")
@@ -119,8 +131,16 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
                     missing_view_identity_rows += 1
                 else:
                     view_split = str(row.get("view_split") or "")
+                    sampled_view_names.add(view_name)
                     if view_split == "train" or view_name.startswith("train_"):
                         training_view_names.add(view_name)
+                        sampled_train_views.add(view_name)
+                    elif view_split == "test" or view_name.startswith("test_"):
+                        sampled_test_views.add(view_name)
+                    elif view_split == "target" or view_name.startswith("target_"):
+                        sampled_target_views.add(view_name)
+                    else:
+                        sampled_unknown_views.add(view_name)
             if row_invalid:
                 invalid_rows += 1
 
@@ -133,6 +153,13 @@ def _training_event_sanity(path: Path) -> dict[str, Any]:
         "has_view_identity": sampled_view_rows > 0 and missing_view_identity_rows == 0,
         "missing_view_identity_rows": missing_view_identity_rows,
         "unique_training_view_count": len(training_view_names),
+        "unique_sampled_view_count": len(sampled_view_names),
+        "sampled_train_view_count": len(sampled_train_views),
+        "sampled_test_view_count": len(sampled_test_views),
+        "sampled_target_view_count": len(sampled_target_views),
+        "sampled_unknown_view_count": len(sampled_unknown_views),
+        "unexpected_non_train_sampled_view_count": len(sampled_test_views | sampled_target_views),
+        "unexpected_non_train_sampled_views": sorted(sampled_test_views | sampled_target_views),
         "sampled_view_rows": sampled_view_rows,
     }
 
@@ -186,6 +213,11 @@ def inspect_training_events(run_dir: Path) -> dict[str, Any]:
         if sanity_invalid_rows is None
         else max(summary_invalid_rows or 0, sanity_invalid_rows)
     )
+    warnings = list(summary.get("warnings", []))
+    if sanity["unexpected_non_train_sampled_view_count"]:
+        warnings.append(
+            "Training iteration metrics include non-train views. Use --eval during official 3DGS training to keep test cameras held out."
+        )
     return {
         "run_dir": str(run_dir),
         "missing_required_paths": missing,
@@ -214,12 +246,21 @@ def inspect_training_events(run_dir: Path) -> dict[str, Any]:
         "has_view_identity": sanity["has_view_identity"],
         "missing_view_identity_rows": sanity["missing_view_identity_rows"],
         "unique_training_view_count": sanity["unique_training_view_count"],
+        "unique_sampled_view_count": sanity["unique_sampled_view_count"],
+        "sampled_train_view_count": sanity["sampled_train_view_count"],
+        "sampled_test_view_count": sanity["sampled_test_view_count"],
+        "sampled_target_view_count": sanity["sampled_target_view_count"],
+        "sampled_unknown_view_count": sanity["sampled_unknown_view_count"],
+        "unexpected_non_train_sampled_view_count": sanity[
+            "unexpected_non_train_sampled_view_count"
+        ],
+        "unexpected_non_train_sampled_views": sanity["unexpected_non_train_sampled_views"],
         "sampled_view_rows": sanity["sampled_view_rows"],
         "densification_trigger_count": summary.get("densification_trigger_count"),
         "initial_gaussian_count": summary.get("initial_gaussian_count"),
         "final_gaussian_count": summary.get("final_gaussian_count"),
         "observation_only": summary.get("observation_only"),
-        "warnings": summary.get("warnings", []),
+        "warnings": warnings,
     }
 
 
@@ -228,6 +269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--require-events", action="store_true")
     parser.add_argument("--require-view-identity", action="store_true")
+    parser.add_argument("--require-train-only-sampling", action="store_true")
     return parser.parse_args()
 
 
@@ -261,6 +303,16 @@ def main() -> int:
         print(
             "ERROR: training event outputs are missing sampled view identity rows: "
             f"{report['missing_view_identity_rows']}",
+            file=sys.stderr,
+        )
+        return 1
+    if (
+        args.require_train_only_sampling
+        and report["unexpected_non_train_sampled_view_count"]
+    ):
+        print(
+            "ERROR: training iteration metrics include non-train sampled views: "
+            f"{report['unexpected_non_train_sampled_views']}",
             file=sys.stderr,
         )
         return 1

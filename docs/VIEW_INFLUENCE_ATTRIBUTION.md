@@ -45,6 +45,26 @@ python scripts/third_party/apply_gaussian_splatting_observation_patch.py \
 PR12 adds sampled view identity to `training_events.csv` and stamps PR8
 lifecycle birth/prune events with source-view context.
 
+## Split-Correct Training Protocol
+
+PR12.1 makes the clean/corrupt baseline wrapper pass official 3DGS `--eval` by
+default. For Blender/NeRF Synthetic scenes this keeps test cameras held out
+instead of merging them into the training camera pool.
+
+New PR12.1 runs should validate train-only sampling:
+
+```bash
+python scripts/measure/inspect_training_events.py \
+  --run-dir "$RUN_DIR" \
+  --require-events \
+  --require-view-identity \
+  --require-train-only-sampling
+```
+
+Older PR12 runs created without `--eval` may contain sampled `test_*` views in
+`training_events.csv`. Those runs can still be inspected as historical
+artifacts, but they should not be used as split-correct evidence.
+
 ## Build View Influence Tables
 
 ```bash
@@ -56,6 +76,7 @@ python scripts/measure/build_view_influence_table.py \
   --output-dir outputs/reports/view_influence_corrupt_occluder_$(date +%Y%m%dT%H%M%S) \
   --require-view-identity \
   --require-source-view \
+  --progress-interval-rows 50000 \
   --write-markdown
 ```
 
@@ -69,6 +90,11 @@ view_lifecycle_attribution.csv
 view_iteration_events.csv
 view_influence_artifact_manifest.csv
 ```
+
+`view_influence_summary.json` includes `runtime_s`, per-stage `timing`,
+`input_rows`, throughput estimates, observation-only source fields, and
+split-aware sampled-view counts. Use `--quiet` to suppress lifecycle progress
+logs during scripted runs.
 
 ## Compare Clean and Corrupt Influence
 
@@ -107,3 +133,8 @@ or trust score.
 
 PR12 attribution is temporal/source-view attribution. It does not prove
 causality and does not classify any view as trustworthy or untrustworthy.
+
+The PR12.1 table builder streams lifecycle events and stores grouped counters
+instead of repeatedly rescanning every lifecycle row. This is intended to keep
+the first 700-iteration chair runs tractable while preserving the existing CSV
+schemas.

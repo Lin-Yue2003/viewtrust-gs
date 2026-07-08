@@ -321,3 +321,12 @@ read-only builders for `view_influence.csv`,
 temporal/source-view attribution only; it does not compute trust scores,
 classify views, defend, suppress updates, gate densification, or change
 training behavior.
+
+PR12.1 fixes the training split protocol and scales the view influence report
+builder. The baseline wrapper now passes official Gaussian Splatting `--eval`
+by default so Blender test cameras remain held out, the training event
+inspector can require train-only sampling, and the view influence builder
+streams lifecycle rows while reporting runtime, timing, input-row, throughput,
+observation-only, and split-aware summary fields. It remains observation-only
+and does not change loss, optimization, rendering, densification, pruning,
+trust scoring, defense, corruption, or poisoning behavior.

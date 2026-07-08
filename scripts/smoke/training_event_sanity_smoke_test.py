@@ -19,13 +19,22 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]])
         writer.writerows(rows)
 
 
-def _write_run(run_dir: Path, *, invalid: bool, timing_case: bool = False) -> None:
+def _write_run(
+    run_dir: Path,
+    *,
+    invalid: bool,
+    timing_case: bool = False,
+    view_name: str = "train_000",
+    view_split: str = "train",
+) -> None:
     (run_dir / "tables").mkdir(parents=True)
     if timing_case:
         training_rows = [
             {
                 "iteration": 600,
                 "event_type": "iteration_metrics",
+                "view_name": view_name,
+                "view_split": view_split,
                 "gaussian_count": 30656 if invalid else 100000,
                 "visible_gaussian_count": 92000 if not invalid else "",
                 "visibility_ratio": 0.92 if not invalid else "",
@@ -38,6 +47,8 @@ def _write_run(run_dir: Path, *, invalid: bool, timing_case: bool = False) -> No
             {
                 "iteration": 1,
                 "event_type": "iteration_metrics",
+                "view_name": view_name,
+                "view_split": view_split,
                 "gaussian_count": 100,
                 "visible_gaussian_count": 25 if not invalid else 125,
                 "visibility_ratio": 0.25 if not invalid else 1.25,
@@ -50,6 +61,8 @@ def _write_run(run_dir: Path, *, invalid: bool, timing_case: bool = False) -> No
         [
             "iteration",
             "event_type",
+            "view_name",
+            "view_split",
             "gaussian_count",
             "visible_gaussian_count",
             "visibility_ratio",
@@ -99,15 +112,23 @@ def _write_run(run_dir: Path, *, invalid: bool, timing_case: bool = False) -> No
     )
 
 
-def _run_inspector(project_root: Path, run_dir: Path) -> subprocess.CompletedProcess[str]:
+def _run_inspector(
+    project_root: Path,
+    run_dir: Path,
+    *,
+    require_train_only_sampling: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(project_root / "scripts" / "measure" / "inspect_training_events.py"),
+        "--run-dir",
+        str(run_dir),
+        "--require-events",
+    ]
+    if require_train_only_sampling:
+        command.append("--require-train-only-sampling")
     return subprocess.run(
-        [
-            sys.executable,
-            str(project_root / "scripts" / "measure" / "inspect_training_events.py"),
-            "--run-dir",
-            str(run_dir),
-            "--require-events",
-        ],
+        command,
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -123,10 +144,17 @@ def main() -> int:
         invalid_run = tmp_root / "invalid"
         timing_valid_run = tmp_root / "timing-valid"
         timing_invalid_run = tmp_root / "timing-invalid"
+        non_train_run = tmp_root / "non-train"
         _write_run(valid_run, invalid=False)
         _write_run(invalid_run, invalid=True)
         _write_run(timing_valid_run, invalid=False, timing_case=True)
         _write_run(timing_invalid_run, invalid=True, timing_case=True)
+        _write_run(
+            non_train_run,
+            invalid=False,
+            view_name="test_000",
+            view_split="test",
+        )
 
         valid = _run_inspector(project_root, valid_run)
         if valid.returncode != 0:
@@ -134,6 +162,15 @@ def main() -> int:
         valid_report = json.loads(valid.stdout)
         if valid_report["invalid_training_event_rows"] != 0:
             raise ValueError("valid run reported invalid training event rows")
+        if valid_report["unexpected_non_train_sampled_view_count"] != 0:
+            raise ValueError("train-only run reported unexpected non-train samples")
+        train_only_valid = _run_inspector(
+            project_root,
+            valid_run,
+            require_train_only_sampling=True,
+        )
+        if train_only_valid.returncode != 0:
+            raise RuntimeError(train_only_valid.stderr or train_only_valid.stdout)
 
         invalid = _run_inspector(project_root, invalid_run)
         if invalid.returncode == 0:
@@ -163,6 +200,22 @@ def main() -> int:
         timing_invalid_report = json.loads(timing_invalid.stdout)
         if timing_invalid_report["invalid_training_event_rows"] != 1:
             raise ValueError("old timing mismatch invalid row was not detected")
+
+        non_train_default = _run_inspector(project_root, non_train_run)
+        if non_train_default.returncode != 0:
+            raise RuntimeError(non_train_default.stderr or non_train_default.stdout)
+        non_train_report = json.loads(non_train_default.stdout)
+        if non_train_report["unexpected_non_train_sampled_view_count"] != 1:
+            raise ValueError("non-train sampled view was not counted")
+        if not any("non-train views" in warning for warning in non_train_report["warnings"]):
+            raise ValueError("non-train sampled view did not emit warning")
+        non_train_strict = _run_inspector(
+            project_root,
+            non_train_run,
+            require_train_only_sampling=True,
+        )
+        if non_train_strict.returncode == 0:
+            raise ValueError("non-train sampled view should fail strict train-only inspection")
 
     print("training event sanity smoke test ok")
     return 0

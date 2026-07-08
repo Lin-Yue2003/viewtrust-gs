@@ -42,6 +42,12 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument(
+        "--eval-split",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Pass official Gaussian Splatting --eval so test cameras stay held out.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -78,6 +84,12 @@ def _metadata(
         "gaussian_lifecycle_enabled": args.enable_gaussian_lifecycle,
         "gaussian_lifecycle_strict": args.gaussian_lifecycle_strict,
         "gaussian_lifecycle_log_snapshot_stats": args.gaussian_lifecycle_log_snapshot_stats,
+        "eval_split": args.eval_split,
+        "training_split_protocol": (
+            "official_3dgs_eval_mode_train_only"
+            if args.eval_split
+            else "official_3dgs_non_eval_mode_may_merge_test"
+        ),
     }
 
 
@@ -116,6 +128,7 @@ def main() -> int:
         enable_gaussian_lifecycle=args.enable_gaussian_lifecycle,
         gaussian_lifecycle_strict=args.gaussian_lifecycle_strict,
         gaussian_lifecycle_log_snapshot_stats=args.gaussian_lifecycle_log_snapshot_stats,
+        eval_split=args.eval_split,
     )
 
     label = build_baseline_label(config.scene, config.condition, config.trainer)
@@ -141,6 +154,7 @@ def main() -> int:
         prepared_scene_root=prepared_scene_root,
         trainer_output_dir=trainer_output_dir,
         iterations=config.iterations,
+        eval_split=config.eval_split,
     )
     metadata = _metadata(
         args=args,
@@ -246,6 +260,12 @@ def main() -> int:
         "gaussian_lifecycle_enabled": config.enable_gaussian_lifecycle,
         "gaussian_lifecycle_env_keys": sorted(gaussian_lifecycle_env),
         "gaussian_lifecycle_strict": config.gaussian_lifecycle_strict,
+        "eval_split": config.eval_split,
+        "training_split_protocol": (
+            "official_3dgs_eval_mode_train_only"
+            if config.eval_split
+            else "official_3dgs_non_eval_mode_may_merge_test"
+        ),
     }
     print(json.dumps(dry_run_report, indent=2, sort_keys=True))
 

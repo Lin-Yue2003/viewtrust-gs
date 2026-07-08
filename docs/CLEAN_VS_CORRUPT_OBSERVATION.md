@@ -19,6 +19,12 @@ Gaussian lifecycle compared with clean training?
 The comparison uses PR7 training event logs and PR8 Gaussian lifecycle logs.
 It should not be read as corruption detection.
 
+For PR12.1 and later evidence, clean and corrupt runs should be trained through
+the wrapper default that passes official 3DGS `--eval`. This keeps test cameras
+held out for Blender/NeRF Synthetic scenes. Historical non-eval runs may have
+sampled test cameras during training and should not be treated as split-correct
+clean-vs-corrupt evidence.
+
 ## Required Inputs
 
 Clean observed run:
@@ -75,6 +81,9 @@ python scripts/train/run_clean_chair_baseline.py \
   --enable-gaussian-lifecycle \
   --gaussian-lifecycle-strict
 ```
+
+The wrapper passes `--eval` by default. Use `--no-eval-split` only for explicit
+diagnostic comparisons, not for split-correct Priority 0 reporting.
 
 ## Compare Runs
 

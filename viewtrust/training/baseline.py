@@ -30,6 +30,7 @@ class BaselineTrainingConfig:
     enable_gaussian_lifecycle: bool = False
     gaussian_lifecycle_strict: bool = False
     gaussian_lifecycle_log_snapshot_stats: bool = True
+    eval_split: bool = True
 
 
 def build_baseline_label(scene: str, condition: str, trainer: str) -> str:
@@ -93,10 +94,11 @@ def build_gaussian_splatting_command(
     prepared_scene_root: Path,
     trainer_output_dir: Path,
     iterations: int,
+    eval_split: bool = True,
 ) -> list[str]:
     if iterations <= 0:
         raise ValueError("iterations must be positive")
-    return [
+    command = [
         sys.executable,
         str(trainer_path),
         "-s",
@@ -106,6 +108,9 @@ def build_gaussian_splatting_command(
         "--iterations",
         str(iterations),
     ]
+    if eval_split:
+        command.append("--eval")
+    return command
 
 
 def build_training_event_env(

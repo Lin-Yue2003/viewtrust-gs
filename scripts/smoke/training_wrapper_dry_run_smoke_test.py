@@ -80,6 +80,18 @@ def main() -> int:
             raise ValueError("command does not contain trainer output -m argument")
         if "--iterations" not in command or "500" not in command:
             raise ValueError("command does not contain --iterations 500")
+        if "--eval" not in command:
+            raise ValueError("default command should include official 3DGS --eval")
+
+        non_eval_command = build_gaussian_splatting_command(
+            trainer_path=resolved_trainer_path,
+            prepared_scene_root=resolved_scene_root,
+            trainer_output_dir=trainer_output_dir,
+            iterations=500,
+            eval_split=False,
+        )
+        if "--eval" in non_eval_command:
+            raise ValueError("eval_split=False command should not include --eval")
 
     print("training wrapper dry-run smoke test ok")
     return 0
