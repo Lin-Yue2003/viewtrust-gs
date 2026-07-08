@@ -60,13 +60,13 @@ Seeded subsets are sampled only from discovered training views. The same seed
 and train-view list produce the same subset hash. Different seed collisions are
 reported as warnings.
 
-`pr16_run_commands.sh` is executable in TODO-only mode by default. It prints
-the scene, subset, condition, missing stage, and expected PR16 input directory
-for each matrix cell, then exits successfully. Set
-`PR16_EXECUTE_HEAVY_STAGES=1` only after reviewing the plan; the generated
-script may prepare natural corruption data, but it still marks training, view
-influence extraction, comparison, offline signal generation, and metadata
-validation as TODO unless those stages have been made explicit.
+`pr16_run_commands.sh` is executable. By default it runs the existing
+ViewTrust scripts end-to-end for each matrix cell: natural corruption
+generation, clean/corrupt training, clean/corrupt view influence extraction,
+view influence comparison, PR13 offline signal generation, and final PR16 input
+directory validation. Set `PR16_EXECUTE_HEAVY_STAGES=0` to print explicit
+copy-paste commands without running them. `PR16_FAKE_MODE=1` is reserved for
+local smoke tests and creates tiny fake PR16 input directories.
 
 ## Analyzer
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -197,8 +198,18 @@ def _make_offline_output(
     )
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+def _run(command: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    return subprocess.run(
+        command,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=merged_env,
+    )
 
 
 def _assert_self_manifest(path: Path) -> None:
@@ -215,6 +226,7 @@ def main() -> int:
         root = Path(tmp)
         data_root = root / "data"
         reports_root = root / "reports"
+        command_reports_root = root / "command_reports"
         plan_dir = root / "plan"
         analysis_dir = root / "analysis"
         for scene in ["chair", "drum"]:
@@ -277,17 +289,36 @@ def main() -> int:
         assert '"$CLEAN_VIEW_INFLUENCE_DIR"' not in run_commands
         assert '"$CORRUPT_VIEW_INFLUENCE_DIR"' not in run_commands
         assert '"$VIEW_INFLUENCE_COMPARISON_DIR"' not in run_commands
-        assert "CLEAN_VIEW_INFLUENCE_DIR" not in run_commands
-        assert "CORRUPT_VIEW_INFLUENCE_DIR" not in run_commands
-        assert "VIEW_INFLUENCE_COMPARISON_DIR" not in run_commands
-        command_result = _run(["bash", str(plan_dir / "pr16_run_commands.sh")])
+        assert "Default mode is TODO-only" not in run_commands
+        assert "full training, clean/corrupt view influence" not in run_commands
+        command_result = _run(
+            ["bash", str(plan_dir / "pr16_run_commands.sh")],
+            env={
+                "PR16_FAKE_MODE": "1",
+                "VIEWTRUST_REPORT_ROOT": str(command_reports_root),
+            },
+        )
         if command_result.returncode != 0:
             print(command_result.stdout)
             print(command_result.stderr, file=sys.stderr)
             return command_result.returncode
-        assert "TODO PR16" in command_result.stdout
-        assert "heavy stages disabled" in command_result.stdout
-        assert "expected_output_dir:" in command_result.stdout
+        assert "TODO PR16" not in command_result.stdout
+        for scene in ["chair", "drum"]:
+            for subset_name in ["original", "seed_20260708", "seed_20260709"]:
+                for condition in ["corrupt_occluder", "corrupt_noise"]:
+                    expected = command_reports_root / f"offline_viewtrust_{scene}_{condition}_{subset_name}_pr16_input"
+                    assert expected.is_dir(), expected
+                    for required in [
+                        "offline_viewtrust_summary.json",
+                        "offline_viewtrust_rankings.csv",
+                        "offline_viewtrust_signals.csv",
+                        "offline_viewtrust_signal_ablation.csv",
+                        "offline_viewtrust_group_metrics.csv",
+                        "offline_viewtrust_config.json",
+                        "offline_viewtrust_report.md",
+                        "offline_viewtrust_artifact_manifest.csv",
+                    ]:
+                        assert (expected / required).is_file(), expected / required
 
         analyzer = _run(
             [
