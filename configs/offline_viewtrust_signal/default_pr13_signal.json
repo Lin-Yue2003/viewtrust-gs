@@ -1,0 +1,25 @@
+{
+  "schema_name": "viewtrust.offline_signal.config",
+  "schema_version": 1,
+  "normalization": {
+    "method": "robust_z",
+    "mad_scale": 1.4826,
+    "eps": 1e-8,
+    "positive_only": true
+  },
+  "weights": {
+    "loss_component": 0.2,
+    "visibility_component": 0.15,
+    "birth_component": 0.2,
+    "prune_component": 0.25,
+    "survival_component": 0.1,
+    "delta_component": 0.1
+  },
+  "ranking": {
+    "higher_risk_is_more_suspicious": true
+  },
+  "labels": {
+    "use_corruption_labels_for_scoring": false,
+    "use_corruption_labels_for_evaluation": true
+  }
+}

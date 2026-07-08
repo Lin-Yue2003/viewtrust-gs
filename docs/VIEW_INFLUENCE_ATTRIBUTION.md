@@ -114,6 +114,26 @@ view_influence_comparison.csv
 view_influence_comparison_report.md
 ```
 
+## Offline Signal Design
+
+PR13 consumes split-correct PR12.1 view influence tables to build offline
+candidate ViewTrust signals:
+
+```bash
+python scripts/measure/build_offline_viewtrust_signals.py \
+  --clean-view-influence-dir "$CLEAN_VIEW_INFLUENCE_DIR" \
+  --corrupt-view-influence-dir "$CORRUPT_VIEW_INFLUENCE_DIR" \
+  --view-influence-comparison-dir "$VIEW_INFLUENCE_COMPARE_DIR" \
+  --output-dir outputs/reports/offline_viewtrust_corrupt_occluder_pr13_$(date +%Y%m%dT%H%M%S) \
+  --write-markdown \
+  --top-k 5
+```
+
+PR13 remains offline and observation-only. It does not implement a training-time
+trust score, defense, poison classifier, loss reweighting, update suppression,
+or densification gating. Corruption labels are used only after scoring for
+post-hoc evaluation.
+
 ## Interpretation
 
 Use these reports as exploratory evidence for later offline trust signal

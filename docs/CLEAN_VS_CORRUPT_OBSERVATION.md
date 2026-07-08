@@ -124,6 +124,11 @@ trustworthy or untrustworthy.
 Avoid interpreting larger deltas as detection. PR11 is a measurement layer for
 future ViewTrust signal design.
 
+PR13 uses split-correct PR12.1 clean-vs-corrupt influence outputs for offline
+candidate signal design. It remains post-hoc analysis: corruption labels are
+used only for evaluation, not scoring, and no training-time defense or trust
+mechanism is enabled.
+
 ## Known Limitations
 
 Only `corrupt_occluder` is required for first server validation, though the full

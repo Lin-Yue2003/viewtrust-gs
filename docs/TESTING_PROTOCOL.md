@@ -73,6 +73,10 @@ observed clean/corrupt runs. PR12 adds
 `view_influence_table_performance_smoke_test.py`, and
 `view_influence_summary_schema_smoke_test.py`; it also extends
 `training_event_sanity_smoke_test.py` to verify train-only sampling checks.
+PR13 adds `offline_viewtrust_signals_smoke_test.py`, which builds offline
+candidate signal outputs from fake split-correct view influence tables and
+checks robust normalization, ranking, group metrics, ablation metrics, and
+label-use boundaries.
 
 ## Observed Command Checks
 
@@ -382,6 +386,28 @@ unexpected non-train sampled views. The view influence builder reports
 `runtime_s`, per-stage `timing`, `input_rows`, throughput estimates, and
 split-aware sampled-view counts in `view_influence_summary.json`; use `--quiet`
 when progress logs are not wanted.
+
+PR13 offline signal generation is read-only:
+
+```bash
+python scripts/measure/build_offline_viewtrust_signals.py \
+  --clean-view-influence-dir "$CLEAN_VIEW_INFLUENCE_DIR" \
+  --corrupt-view-influence-dir "$CORRUPT_VIEW_INFLUENCE_DIR" \
+  --view-influence-comparison-dir "$VIEW_INFLUENCE_COMPARE_DIR" \
+  --output-dir outputs/reports/offline_viewtrust_corrupt_occluder_pr13_$(date +%Y%m%dT%H%M%S) \
+  --write-markdown \
+  --top-k 5
+```
+
+Expected PR13 summary invariants:
+
+```text
+observation_only = true
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
+training_intervention = false
+defense_enabled = false
+```
 
 Recommended server validation flow:
 

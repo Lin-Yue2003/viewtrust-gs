@@ -330,3 +330,12 @@ streams lifecycle rows while reporting runtime, timing, input-row, throughput,
 observation-only, and split-aware summary fields. It remains observation-only
 and does not change loss, optimization, rendering, densification, pruning,
 trust scoring, defense, corruption, or poisoning behavior.
+
+PR13 Offline ViewTrust Signal Design builds post-hoc candidate signal tables
+from split-correct PR12.1 view influence outputs. It adds robust normalization,
+interpretable lifecycle/loss/visibility/delta components, risk/consistency
+rankings, corrupted-vs-uncorrupted evaluation summaries, ablation metrics, and
+a Markdown report. Corruption labels are used only after scoring for
+evaluation. PR13 does not implement a training-time trust score, defense,
+poison classifier, loss reweighting, update suppression, densification gating,
+or any training/rendering behavior change.
