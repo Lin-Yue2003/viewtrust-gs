@@ -219,6 +219,7 @@ PR13: offline ViewTrust signal design
 PR14: multi-condition offline ViewTrust signal validation
 PR15: cross-condition rank consistency and component diagnosis
 PR16: subset and scene bias probe
+PR17: clean-prior normalized offline ViewTrust signals
 ```
 
 PR1 validates external observation before any training-loop instrumentation. It
@@ -376,3 +377,14 @@ component comparisons, a Markdown report, and a two-pass artifact manifest.
 PR16 does not change PR13 scoring, PR14 aggregation, PR15 behavior, training,
 rendering, `third_party`, trust-aware training, defense behavior, loss
 reweighting, update suppression, or densification gating.
+
+PR17 Clean-Prior Normalized Offline ViewTrust Signals adds a post-hoc
+normalization layer over existing PR13 / PR16 offline signal outputs. It
+estimates a per-view clean prior from clean-side view influence features or
+clean columns recorded in existing artifacts, then writes raw-vs-normalized
+rankings, group metrics, ablation metrics, false-positive reduction tables,
+view-identity diagnostics, missing-output reports, a Markdown report, and a
+two-pass artifact manifest. PR17 is offline analysis only: it does not change
+raw PR13 scoring, PR14 aggregation, PR15 or PR16 behavior, training, rendering,
+`third_party`, loss reweighting, view rejection, update suppression,
+densification gating, or any defense behavior.

@@ -1,0 +1,20 @@
+{
+  "schema_name": "viewtrust.clean_prior_normalization.config",
+  "schema_version": 1,
+  "prior_mode": "auto",
+  "normalization": {
+    "method": "robust_z",
+    "mad_scale": 1.4826,
+    "eps": 1e-8,
+    "positive_only": true
+  },
+  "normalized_score": {
+    "positive_delta_weight": 1.0,
+    "prior_suppressed_weight": 0.25,
+    "rank_lift_weight": 0.1
+  },
+  "labels": {
+    "use_corruption_labels_for_scoring": false,
+    "use_corruption_labels_for_evaluation": true
+  }
+}

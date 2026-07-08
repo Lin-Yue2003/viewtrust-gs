@@ -94,6 +94,10 @@ deterministic subset planning, chair/drum scene coverage, subset-seed manifests,
 view identity bias rows, repeated false positives, component comparisons,
 offline-only report wording, and artifact manifest self-validation with fake
 offline outputs.
+PR17 adds `clean_prior_normalized_viewtrust_smoke_test.py`, which validates
+clean-prior normalization with fake offline signal directories, artifact
+manifest input resolution, missing-output reporting, false-positive reduction,
+and offline-only label-use guarantees.
 
 ## Observed Command Checks
 
@@ -548,6 +552,40 @@ Expected PR16 summary invariants:
 
 ```text
 schema_name = viewtrust.pr16.subset_scene_bias.summary
+observation_only = true
+training_intervention = false
+defense_enabled = false
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
+```
+
+## PR17 Clean-Prior Normalized Offline ViewTrust
+
+PR17 clean-prior normalization is offline analysis only:
+
+```bash
+python scripts/measure/analyze_clean_prior_normalized_viewtrust.py \
+  --input-root outputs/reports \
+  --plan-dir "$PR16_PLAN_ANALYSIS_DIR" \
+  --output-dir "$PR17_DIR" \
+  --scenes chair drums \
+  --conditions corrupt_occluder corrupt_noise corrupt_mixed \
+  --subset-names original seed_20260710 \
+  --top-k 5 \
+  --allow-missing \
+  --write-markdown
+```
+
+LOCAL-SAFE:
+
+```bash
+python scripts/smoke/clean_prior_normalized_viewtrust_smoke_test.py
+```
+
+Expected PR17 summary invariants:
+
+```text
+schema_name = viewtrust.pr17.clean_prior_normalized.summary
 observation_only = true
 training_intervention = false
 defense_enabled = false

@@ -48,6 +48,16 @@ from viewtrust.analysis.subset_scene_bias import (
     generate_seeded_subset,
     stable_hash_view_list,
 )
+from viewtrust.analysis.clean_prior_normalization import (
+    compute_clean_prior_rows,
+    compute_false_positive_reduction,
+    compute_normalized_ablation_metrics,
+    compute_normalized_rows,
+    compute_view_identity_diagnosis,
+    load_offline_signal_dir,
+    rank_normalized_rows,
+    resolve_artifact_manifest_paths,
+)
 from viewtrust.analysis.statistics import NumericSummary, summarize_numbers, summarize_table
 from viewtrust.analysis.tables import write_csv_table
 
@@ -71,6 +81,11 @@ __all__ = [
     "build_view_identity_bias_table",
     "compute_condition_ranking",
     "compute_failure_cases",
+    "compute_clean_prior_rows",
+    "compute_false_positive_reduction",
+    "compute_normalized_ablation_metrics",
+    "compute_normalized_rows",
+    "compute_view_identity_diagnosis",
     "compute_ablation_metrics",
     "compute_group_metrics",
     "compute_signal_components",
@@ -80,11 +95,14 @@ __all__ = [
     "discover_train_views",
     "find_condition_signal_dir",
     "generate_seeded_subset",
+    "load_offline_signal_dir",
     "mad",
     "positive_part",
     "precision_at_k",
     "rank_descending",
+    "rank_normalized_rows",
     "recall_at_k",
+    "resolve_artifact_manifest_paths",
     "robust_median",
     "robust_z_scores",
     "safe_divide",
