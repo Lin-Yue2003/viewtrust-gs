@@ -339,3 +339,13 @@ a Markdown report. Corruption labels are used only after scoring for
 evaluation. PR13 does not implement a training-time trust score, defense,
 poison classifier, loss reweighting, update suppression, densification gating,
 or any training/rendering behavior change.
+
+PR14 Multi-condition Offline ViewTrust Signal Validation aggregates existing
+PR13 outputs across natural corruption conditions. It discovers the newest
+valid offline signal directory per condition, writes per-condition results,
+cross-condition ablation rows, condition rankings, failure-case diagnostics, a
+multi-condition summary, a Markdown report, and a two-pass artifact manifest.
+It supports partial validation when only some condition outputs exist and
+strict validation with `--require-all-conditions`. PR14 does not retrain,
+render, modify `third_party`, implement a defense, implement a training-time
+trust score, reweight loss, suppress updates, or gate densification.

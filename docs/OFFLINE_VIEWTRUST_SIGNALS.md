@@ -107,3 +107,8 @@ automatic rejection. A high offline risk score does not prove maliciousness.
 PR13 should be evaluated on multiple natural corruption conditions and multiple
 seeds before making any method claim. PR14 should focus on multi-condition and
 multi-seed offline signal validation.
+
+PR14 adds `scripts/measure/aggregate_offline_viewtrust_results.py`, which
+aggregates existing PR13 outputs across natural corruption conditions. It can
+run in partial mode when only some conditions exist, or strict mode with
+`--require-all-conditions` after all condition outputs are available.

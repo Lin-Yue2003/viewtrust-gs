@@ -76,7 +76,11 @@ observed clean/corrupt runs. PR12 adds
 PR13 adds `offline_viewtrust_signals_smoke_test.py`, which builds offline
 candidate signal outputs from fake split-correct view influence tables and
 checks robust normalization, ranking, group metrics, ablation metrics, and
-label-use boundaries.
+label-use boundaries. PR14 adds
+`offline_viewtrust_multi_condition_smoke_test.py`, which validates discovery of
+the newest PR13 output per condition, partial missing-condition behavior,
+strict missing-condition failure, cross-condition outputs, failure cases, report
+wording, and artifact manifest self-validation.
 
 ## Observed Command Checks
 
@@ -403,6 +407,42 @@ Expected PR13 summary invariants:
 
 ```text
 observation_only = true
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
+training_intervention = false
+defense_enabled = false
+```
+
+PR14 multi-condition offline aggregation is read-only:
+
+```bash
+python scripts/measure/aggregate_offline_viewtrust_results.py \
+  --input-root outputs/reports \
+  --output-dir outputs/reports/offline_viewtrust_multi_condition_pr14_partial_$(date +%Y%m%dT%H%M%S) \
+  --scene chair \
+  --clean-condition clean \
+  --conditions corrupt_occluder corrupt_blur corrupt_exposure corrupt_color_shift corrupt_noise corrupt_mixed \
+  --top-k 5 \
+  --write-markdown
+```
+
+Use strict mode after all condition outputs exist:
+
+```bash
+python scripts/measure/aggregate_offline_viewtrust_results.py \
+  --input-root outputs/reports \
+  --output-dir outputs/reports/offline_viewtrust_multi_condition_pr14_full_$(date +%Y%m%dT%H%M%S) \
+  --scene chair \
+  --clean-condition clean \
+  --conditions corrupt_occluder corrupt_blur corrupt_exposure corrupt_color_shift corrupt_noise corrupt_mixed \
+  --top-k 5 \
+  --require-all-conditions \
+  --write-markdown
+```
+
+Expected PR14 summary invariants:
+
+```text
 uses_corruption_labels_for_scoring = false
 uses_corruption_labels_for_evaluation = true
 training_intervention = false
