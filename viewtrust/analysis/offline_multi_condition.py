@@ -64,14 +64,21 @@ def _timestamp_sort_key(path: Path) -> tuple[str, str]:
     return path.name.rsplit("_", 1)[-1], path.name
 
 
+def _is_offline_signal_candidate(path: Path, condition: str) -> bool:
+    name = path.name
+    return (
+        name.startswith(f"offline_viewtrust_{condition}_pr13")
+        or name == f"offline_viewtrust_{condition}_pr14_input"
+    )
+
+
 def discover_offline_signal_dirs(input_root: Path, conditions: list[str]) -> dict[str, Path | None]:
     result: dict[str, Path | None] = {}
     for condition in conditions:
-        prefix = f"offline_viewtrust_{condition}_pr13"
         candidates = [
             path
             for path in input_root.iterdir()
-            if path.is_dir() and path.name.startswith(prefix)
+            if path.is_dir() and _is_offline_signal_candidate(path, condition)
         ] if input_root.exists() else []
         sorted_candidates = sorted(candidates, key=_timestamp_sort_key, reverse=True)
         valid = [

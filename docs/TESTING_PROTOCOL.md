@@ -78,9 +78,10 @@ candidate signal outputs from fake split-correct view influence tables and
 checks robust normalization, ranking, group metrics, ablation metrics, and
 label-use boundaries. PR14 adds
 `offline_viewtrust_multi_condition_smoke_test.py`, which validates discovery of
-the newest PR13 output per condition, partial missing-condition behavior,
-strict missing-condition failure, cross-condition outputs, failure cases, report
-wording, and artifact manifest self-validation.
+the newest PR13 output per condition, helper-generated
+`offline_viewtrust_<condition>_pr14_input` directories, partial
+missing-condition behavior, strict missing-condition failure, cross-condition
+outputs, failure cases, report wording, and artifact manifest self-validation.
 
 ## Observed Command Checks
 

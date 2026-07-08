@@ -11,6 +11,20 @@ labels are used only for post-hoc evaluation.
 PR14 does not retrain, render, change 3DGS training, modify `third_party`, gate
 densification, reweight loss, suppress updates, or change rendering behavior.
 
+## Discovery
+
+The aggregator discovers per-condition PR13-style outputs under `--input-root`
+using these accepted directory forms:
+
+```text
+offline_viewtrust_<condition>_pr13*
+offline_viewtrust_<condition>_pr14_input
+```
+
+The second form is produced by
+`scripts/experiments/run_pr14_condition_offline_signal.py`. Unrelated outputs
+such as `offline_viewtrust_multi_condition_pr14_full_*` are ignored.
+
 ## Conditions
 
 Default conditions:

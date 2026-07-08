@@ -190,6 +190,22 @@ def _make_pr13_dir(
     return path
 
 
+def _make_pr14_input_dir(
+    root: Path,
+    *,
+    condition: str,
+    top1_corrupted: bool = True,
+    risk_gap: float = 1.0,
+) -> Path:
+    return _make_pr13_dir(
+        root,
+        condition=condition,
+        suffix="pr14_input",
+        top1_corrupted=top1_corrupted,
+        risk_gap=risk_gap,
+    )
+
+
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -201,6 +217,7 @@ def main() -> int:
         input_root = root / "reports"
         output_dir = root / "out"
         strict_output_dir = root / "strict-out"
+        helper_output_dir = root / "helper-out"
         input_root.mkdir()
         _make_pr13_dir(
             input_root,
@@ -223,6 +240,7 @@ def main() -> int:
             top1_corrupted=False,
             risk_gap=-0.5,
         )
+        (input_root / "offline_viewtrust_multi_condition_pr14_full_20260708T130008").mkdir()
 
         base_command = [
             sys.executable,
@@ -313,6 +331,63 @@ def main() -> int:
         strict = _run([*base_command, "--output-dir", str(strict_output_dir), "--require-all-conditions"])
         if strict.returncode == 0:
             raise ValueError("strict aggregation should fail when a condition is missing")
+
+        _make_pr14_input_dir(input_root, condition="corrupt_noise")
+        _make_pr14_input_dir(input_root, condition="corrupt_exposure")
+        helper = _run(
+            [
+                sys.executable,
+                str(project_root / "scripts" / "measure" / "aggregate_offline_viewtrust_results.py"),
+                "--input-root",
+                str(input_root),
+                "--output-dir",
+                str(helper_output_dir),
+                "--scene",
+                "chair",
+                "--clean-condition",
+                "clean",
+                "--conditions",
+                "corrupt_noise",
+                "corrupt_exposure",
+                "--top-k",
+                "2",
+                "--require-all-conditions",
+                "--write-markdown",
+                "--quiet",
+            ]
+        )
+        if helper.returncode != 0:
+            raise RuntimeError(helper.stderr or helper.stdout)
+        helper_summary = json.loads(
+            (helper_output_dir / "offline_viewtrust_multi_condition_summary.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        if helper_summary["condition_count_valid"] != 2:
+            raise ValueError("_pr14_input condition dirs were not discovered")
+        if helper_summary["conditions_missing"]:
+            raise ValueError("_pr14_input conditions should not be missing")
+        helper_results = list(
+            csv.DictReader(
+                (helper_output_dir / "offline_viewtrust_multi_condition_results.csv").open(
+                    newline="",
+                    encoding="utf-8",
+                )
+            )
+        )
+        by_condition = {row["condition"]: row for row in helper_results}
+        for condition in ("corrupt_noise", "corrupt_exposure"):
+            expected = input_root / f"offline_viewtrust_{condition}_pr14_input"
+            if by_condition[condition]["status"] != "ok":
+                raise ValueError(f"{condition} _pr14_input should be valid")
+            if by_condition[condition]["offline_signal_dir"] != str(expected):
+                raise ValueError(f"{condition} did not select the helper-generated dir")
+        if any(
+            "multi_condition" in row["offline_signal_dir"]
+            for row in helper_results
+            if row.get("offline_signal_dir")
+        ):
+            raise ValueError("multi-condition output directory was incorrectly selected")
 
     print("offline ViewTrust multi-condition smoke test ok")
     return 0
