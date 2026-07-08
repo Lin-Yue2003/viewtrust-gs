@@ -277,6 +277,8 @@ def main() -> int:
             )
         )
         relative_paths = {row.get("relative_path") for row in manifest_rows}
+        if "relative_path" not in manifest_rows[0]:
+            raise ValueError("artifact manifest missing relative_path column")
         required_outputs = {
             "offline_viewtrust_summary.json",
             "offline_viewtrust_signals.csv",
@@ -293,6 +295,26 @@ def main() -> int:
             raise ValueError("artifact manifest missing stable input relative path")
         if "path" not in manifest_rows[0]:
             raise ValueError("artifact manifest should keep full path column")
+        manifest_by_relative_path = {
+            row.get("relative_path"): row
+            for row in manifest_rows
+            if row.get("relative_path")
+        }
+        self_row = manifest_by_relative_path.get("offline_viewtrust_artifact_manifest.csv")
+        if self_row is None:
+            raise ValueError("artifact manifest must include itself")
+        if self_row.get("exists") != "true":
+            raise ValueError("artifact manifest self-reference should exist")
+        if self_row.get("required") != "true":
+            raise ValueError("artifact manifest self-reference should be required")
+        if self_row.get("file_type") != "csv":
+            raise ValueError("artifact manifest self-reference should be csv")
+        if int(self_row.get("size_bytes") or 0) <= 0:
+            raise ValueError("artifact manifest self-reference should have positive size")
+        for name in required_outputs:
+            row = manifest_by_relative_path.get(name)
+            if row is None or row.get("exists") != "true":
+                raise ValueError(f"required output artifact missing or not marked existing: {name}")
 
         report = (output_dir / "offline_viewtrust_report.md").read_text(encoding="utf-8")
         report_lower = report.lower()

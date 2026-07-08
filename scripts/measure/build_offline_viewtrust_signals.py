@@ -43,6 +43,22 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> Non
             writer.writerow({field: "" if row.get(field) is None else row.get(field) for field in fields})
 
 
+def _write_artifact_manifest(path: Path, rows: list[dict[str, Any]]) -> None:
+    _write_csv(
+        path,
+        rows,
+        [
+            "relative_path",
+            "path",
+            "exists",
+            "file_type",
+            "size_bytes",
+            "required",
+            "artifact_group",
+        ],
+    )
+
+
 def _float_or_none(value: Any) -> float | None:
     if value in ("", None):
         return None
@@ -581,19 +597,15 @@ def build_offline_viewtrust_signals(
         comparison_dir=view_influence_comparison_dir,
         output_dir=output_dir,
     )
-    _write_csv(
-        output_dir / "offline_viewtrust_artifact_manifest.csv",
-        manifest_rows,
-        [
-            "relative_path",
-            "path",
-            "exists",
-            "file_type",
-            "size_bytes",
-            "required",
-            "artifact_group",
-        ],
+    manifest_path = output_dir / "offline_viewtrust_artifact_manifest.csv"
+    _write_artifact_manifest(manifest_path, manifest_rows)
+    refreshed_manifest_rows = _artifact_manifest_rows(
+        clean_dir=clean_view_influence_dir,
+        corrupt_dir=corrupt_view_influence_dir,
+        comparison_dir=view_influence_comparison_dir,
+        output_dir=output_dir,
     )
+    _write_artifact_manifest(manifest_path, refreshed_manifest_rows)
     if not quiet:
         print(f"offline ViewTrust signal rows: {len(signal_rows)}", file=sys.stderr)
     return summary
