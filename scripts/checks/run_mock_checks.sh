@@ -42,6 +42,7 @@ python scripts/smoke/pr19_gaussian_cluster_risk_smoke_test.py
 python scripts/smoke/pr191_exact_gaussian_logging_smoke_test.py
 python scripts/smoke/pr192_exact_logging_runner_integration_smoke_test.py
 python scripts/smoke/pr193_exact_view_group_binding_smoke_test.py
+python scripts/smoke/pr194_exact_support_filtering_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"

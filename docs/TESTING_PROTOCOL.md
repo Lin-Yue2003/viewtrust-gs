@@ -116,6 +116,10 @@ PR19.3 adds `pr193_exact_view_group_binding_smoke_test.py`, which validates
 post-hoc PR17 / PR18 view-group binding onto fake PR19.2 exact Gaussian logs,
 direct/collateral exact Gaussian ID overlap, train_013 exact control behavior,
 grouped exact output tables, and PR19-ready bundle creation without CUDA.
+PR19.4 adds `pr194_exact_support_filtering_smoke_test.py`, which validates
+strict support modes over fake PR19.3 grouped exact logs, broad support
+degeneracy detection, nontrivial high-event/direct-collateral overlap,
+train_013 control behavior by mode, and offline-only summary fields.
 
 ## Observed Command Checks
 
@@ -193,6 +197,9 @@ offline rank consistency analysis on real PR14.1 outputs
 PR16 planner and analyzer on real chair/drum subset outputs
 PR19.3 exact view-group binding on real PR19.2 exact chair/drums logs and
 review of direct/collateral overlap plus train_013 exact control diagnostics
+PR19.4 exact support filtering on real PR19.3 chair/drums outputs and review
+of broad degeneracy, non-broad exact overlap, train_013 controls, and
+recommended PR19 exact mode
 ```
 
 Command:

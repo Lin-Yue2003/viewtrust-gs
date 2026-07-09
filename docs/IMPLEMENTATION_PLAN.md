@@ -438,3 +438,12 @@ bundle under `pr19_exact_input_bundle/exact_gaussian_logging/`. PR19.3 does
 not change PR19 scoring, PR17 normalization, PR18 diagnosis, training,
 rendering, `third_party`, loss reweighting, update suppression, densification
 gating, or defense behavior.
+
+PR19.4 Exact Event-Level Support Filtering adds an offline diagnostic layer on
+top of PR19.3 grouped exact logs. It compares broad PR19.3 support against
+stricter support modes (`birth`, `prune`, `high_event`, `dominant_source`,
+`low_entropy`, and `suspicious_alive`) to detect broad-overlap degeneracy and
+identify whether any non-broad mode supports nontrivial direct/collateral exact
+Gaussian overlap while preserving train_013 as a clean-prior control. PR19.4
+does not change PR19.3 binding, PR19 scoring, PR17 / PR18 scoring, training,
+rendering, `third_party`, or any defense/intervention behavior.
