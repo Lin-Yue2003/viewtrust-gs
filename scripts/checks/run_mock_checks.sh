@@ -38,6 +38,7 @@ python scripts/smoke/offline_viewtrust_rank_consistency_smoke_test.py
 python scripts/smoke/pr16_subset_scene_bias_smoke_test.py
 python scripts/smoke/clean_prior_normalized_viewtrust_smoke_test.py
 python scripts/smoke/pr18_covisibility_spillover_smoke_test.py
+python scripts/smoke/pr19_gaussian_cluster_risk_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"

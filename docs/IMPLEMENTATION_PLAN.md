@@ -398,3 +398,15 @@ positives. PR18 does not tune PR17 scores, does not use corruption labels for
 scoring, and does not change training, rendering, `third_party`, PR13 scoring,
 PR14 aggregation, PR15 analysis, PR16 behavior, PR17 normalization, or any
 defense/intervention behavior.
+
+PR19 Gaussian Cluster Risk and Support Concentration adds an offline
+Gaussian-level or lifecycle-event-level diagnosis after PR18. It resolves
+existing view influence artifacts through offline manifests, detects whether
+exact per-Gaussian IDs are available, falls back to aggregate event proxy
+clusters when they are not, and ranks candidate representation-risk clusters.
+PR19 writes evidence availability, view-group maps, cluster risk rows,
+direct/collateral overlap diagnostics, train_013 control summaries, and a
+preview-only intervention candidate table where every row remains marked
+`do_not_apply_intervention = true`. PR19 does not change training, rendering,
+`third_party`, PR13 scoring, PR14 aggregation, PR15 analysis, PR16 behavior,
+PR17 normalization, PR18 diagnosis, or any defense/intervention behavior.

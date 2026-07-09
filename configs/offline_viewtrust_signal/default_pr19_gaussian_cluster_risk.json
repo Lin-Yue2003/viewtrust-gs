@@ -1,0 +1,28 @@
+{
+  "schema_name": "viewtrust.pr19.gaussian_cluster_risk.config",
+  "schema_version": 1,
+  "mode": "auto",
+  "normalization": {
+    "method": "robust_z",
+    "mad_scale": 1.4826,
+    "eps": 1e-8,
+    "positive_only": true
+  },
+  "risk_weights": {
+    "source_concentration": 0.30,
+    "corrupted_plus_collateral_ratio": 0.25,
+    "lifecycle_instability": 0.20,
+    "weak_support": 0.15,
+    "visibility_delta": 0.10
+  },
+  "event_cluster": {
+    "iteration_bucket_size": 100,
+    "use_lifecycle_action": true,
+    "use_source_view_group": true,
+    "use_delta_buckets": true
+  },
+  "labels": {
+    "use_corruption_labels_for_scoring": false,
+    "use_corruption_labels_for_evaluation": true
+  }
+}

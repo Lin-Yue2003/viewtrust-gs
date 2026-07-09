@@ -101,6 +101,10 @@ and offline-only label-use guarantees.
 PR18 adds `pr18_covisibility_spillover_smoke_test.py`, which validates
 camera-neighbor spillover diagnosis with fake PR17 rows, fake PR16 subset
 metadata, synthetic camera transforms, and offline-only label-use guarantees.
+PR19 adds `pr19_gaussian_cluster_risk_smoke_test.py`, which validates exact
+Gaussian-ID evidence, aggregate event proxy fallback, missing-input handling,
+train_013 control summaries, preview-only intervention candidates, and
+offline-only label-use guarantees.
 
 ## Observed Command Checks
 
@@ -626,6 +630,43 @@ Expected PR18 summary invariants:
 
 ```text
 schema_name = viewtrust.pr18.covisibility_spillover.summary
+observation_only = true
+training_intervention = false
+defense_enabled = false
+uses_corruption_labels_for_scoring = false
+uses_corruption_labels_for_evaluation = true
+```
+
+## PR19 Gaussian Cluster Risk
+
+PR19 is offline analysis only. It ranks exact Gaussian clusters when IDs are
+available and aggregate lifecycle-event clusters otherwise:
+
+```bash
+python scripts/measure/analyze_pr19_gaussian_cluster_risk.py \
+  --input-root outputs/reports \
+  --plan-dir "$PR16_PLAN_ANALYSIS_DIR" \
+  --pr17-dir "$PR17_DIR" \
+  --pr18-dir "$PR18_DIR" \
+  --output-dir "$PR19_DIR" \
+  --scenes chair drums \
+  --conditions corrupt_occluder corrupt_noise corrupt_mixed \
+  --subset-names original seed_20260710 \
+  --top-k 20 \
+  --allow-missing \
+  --write-markdown
+```
+
+LOCAL-SAFE:
+
+```bash
+python scripts/smoke/pr19_gaussian_cluster_risk_smoke_test.py
+```
+
+Expected PR19 summary invariants:
+
+```text
+schema_name = viewtrust.pr19.gaussian_cluster_risk.summary
 observation_only = true
 training_intervention = false
 defense_enabled = false
