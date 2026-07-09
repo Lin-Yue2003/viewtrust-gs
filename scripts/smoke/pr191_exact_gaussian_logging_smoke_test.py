@@ -105,6 +105,12 @@ def main() -> int:
         events = _read_csv(exact_dir / "gaussian_lifecycle_events.csv")
         event_types = {row["event_type"] for row in events}
         assert {"initial_seed", "clone_birth", "split_birth", "prune_death", "visibility_observation", "update_observation"} <= event_types
+        train_014_observations = [
+            row for row in events
+            if row["view_name"] == "train_014" and row["event_type"] in {"visibility_observation", "update_observation"}
+        ]
+        assert train_014_observations
+        assert {row["view_index"] for row in train_014_observations} == {"14"}
         required_event_columns = {
             "scene", "condition", "subset_name", "run_id", "iteration", "view_name",
             "gaussian_id", "parent_gaussian_id", "root_gaussian_id", "row_index_before",

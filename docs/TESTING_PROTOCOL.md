@@ -108,6 +108,10 @@ offline-only label-use guarantees.
 PR19.1 adds `pr191_exact_gaussian_logging_smoke_test.py`, which validates
 stable sidecar Gaussian IDs across clone, split, prune, compaction,
 visibility/update observations, exact log schemas, and validation CLI outputs.
+PR19.2 adds `pr192_exact_logging_runner_integration_smoke_test.py`, which
+validates that `build_view_influence_table.py` exposes opt-in exact logging
+flags and produces real-run-shaped exact Gaussian log files from lifecycle
+artifacts.
 
 ## Observed Command Checks
 
@@ -705,11 +709,61 @@ defense_enabled = false
 uses_row_index_as_stable_id = false
 ```
 
-Current integration status: this repository now has the sidecar tracker,
-schemas, smoke test, and validation command. A real 3DGS exact logging run
-requires a later opt-in integration patch that passes clone/split/prune masks
-and view context into the tracker. Do not modify `third_party` silently for
-PR19.1.
+Current integration status: PR19.2 connects exact logging to
+`build_view_influence_table.py` by replaying existing real lifecycle artifacts.
+Do not modify `third_party` silently for PR19.1 / PR19.2.
+
+## PR19.2 Exact Gaussian Logging Runner Integration
+
+PR19.2 integrates exact logging with the view influence runner. The smoke test
+is local-safe:
+
+```bash
+python scripts/smoke/pr192_exact_logging_runner_integration_smoke_test.py
+```
+
+Real probe pattern:
+
+```bash
+export VIEW_INFLUENCE_DIR=outputs/reports/view_influence_chair_corrupt_occluder_exact_$(date +%Y%m%dT%H%M%S)
+
+python scripts/measure/build_view_influence_table.py \
+  --run-dir "$RUN_DIR" \
+  --data-root "$VIEWTRUST_DATA_ROOT" \
+  --scene chair \
+  --condition corrupt_occluder \
+  --subset-name seed_20260710 \
+  --output-dir "$VIEW_INFLUENCE_DIR" \
+  --enable-exact-gaussian-logging \
+  --exact-gaussian-log-dir "$VIEW_INFLUENCE_DIR/exact_gaussian_logging" \
+  --exact-gaussian-logging-config configs/offline_viewtrust_signal/default_pr191_exact_gaussian_logging.json \
+  --require-view-identity \
+  --require-source-view \
+  --write-markdown
+```
+
+Validate:
+
+```bash
+export PR192_VALIDATE_DIR=outputs/reports/pr192_exact_gaussian_logging_validate_$(date +%Y%m%dT%H%M%S)
+
+python scripts/measure/validate_pr191_exact_gaussian_logging.py \
+  --exact-log-dir "$VIEW_INFLUENCE_DIR/exact_gaussian_logging" \
+  --output-dir "$PR192_VALIDATE_DIR" \
+  --write-markdown
+```
+
+Expected exact summary invariants:
+
+```text
+integration_source = real_view_influence_runner
+exact_gaussian_logging_enabled = true
+stable_gaussian_ids_enabled = true
+uses_row_index_as_stable_id = false
+observation_only = true
+training_intervention = false
+defense_enabled = false
+```
 
 Recommended server validation flow:
 

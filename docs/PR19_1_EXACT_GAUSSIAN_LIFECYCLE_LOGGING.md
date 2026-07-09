@@ -68,12 +68,16 @@ false`.
 
 ## Current Integration Status
 
-This PR adds tracker, schema, smoke, and validation infrastructure. It does not
-modify `third_party` or official 3DGS training code. Real exact logging in 3DGS
-training requires a follow-up integration patch that passes clone/split/prune
-masks and current view context into the tracker. If that patch cannot be made
-without modifying `third_party`, the blocker should be reported explicitly
-rather than silently changing training behavior.
+PR19.2 integrates this tracker with `scripts/measure/build_view_influence_table.py`.
+That runner replays existing real `gaussian_lifecycle_events.csv` and
+`gaussian_lifecycle_final.csv` artifacts into the exact PR19.1 schema when
+`--enable-exact-gaussian-logging` is explicitly provided. Exact logging remains
+disabled by default.
+
+This integration does not modify `third_party` or official 3DGS training code.
+It uses the existing ViewTrust lifecycle logs emitted by prior opt-in
+observation patches. If future work needs lower-level clone/split/prune masks
+than those logs expose, that should be implemented as a separate opt-in patch.
 
 Future PR19 reruns should consume these exact logs to test whether direct
 corrupted and co-visible collateral views share exact Gaussian clusters while

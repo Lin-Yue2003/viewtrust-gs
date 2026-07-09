@@ -41,6 +41,12 @@ INFLUENCE_FILES = [
     "view_iteration_events.csv",
     "view_influence.csv",
 ]
+EXACT_LOG_FILES = [
+    "gaussian_lifecycle_events.csv",
+    "view_gaussian_event_attribution.csv",
+    "gaussian_identity_table.csv",
+    "gaussian_support_summary.csv",
+]
 
 
 def write_csv_rows(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
@@ -145,8 +151,7 @@ def inspect_gaussian_id_availability(paths: dict[str, Path]) -> dict[str, Any]:
         if not root:
             missing_files.append(group_key)
             continue
-        for name in INFLUENCE_FILES:
-            path = root / name
+        for path in _candidate_influence_paths(root):
             if not path.exists():
                 continue
             rows = load_csv_rows(path)
@@ -172,6 +177,13 @@ def inspect_gaussian_id_availability(paths: dict[str, Path]) -> dict[str, Any]:
         "missing_files": sorted(dict.fromkeys(missing_files)),
         "warnings": warnings,
     }
+
+
+def _candidate_influence_paths(root: Path) -> list[Path]:
+    paths = [root / name for name in INFLUENCE_FILES]
+    paths.extend(root / name for name in EXACT_LOG_FILES)
+    paths.extend(root / "exact_gaussian_logging" / name for name in EXACT_LOG_FILES)
+    return paths
 
 
 def build_view_group_map(
@@ -237,10 +249,9 @@ def _read_influence_rows(paths: dict[str, Path]) -> list[dict[str, Any]]:
         root = paths.get(group_key)
         if not root:
             continue
-        for name in INFLUENCE_FILES:
-            path = root / name
+        for path in _candidate_influence_paths(root):
             for row in load_csv_rows(path):
-                rows.append({"_source_file": name, "_source_group": group_key, **row})
+                rows.append({"_source_file": path.name, "_source_group": group_key, **row})
     comparison = paths.get("input_comparison_dir")
     if comparison:
         for row in load_csv_rows(comparison / "view_influence_comparison.csv"):

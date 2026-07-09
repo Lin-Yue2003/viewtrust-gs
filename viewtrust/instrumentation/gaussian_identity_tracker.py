@@ -120,6 +120,35 @@ def _safe_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _infer_view_index(view_name: str) -> int | None:
+    token = str(view_name or "").rsplit("_", 1)[-1]
+    try:
+        return int(token)
+    except ValueError:
+        return None
+
+
+def _normalize_event_type(event_type: str) -> str:
+    if event_type == "clone":
+        return "clone_birth"
+    if event_type == "split":
+        return "split_birth"
+    if event_type == "densification_birth":
+        return "densify_birth_unknown"
+    if event_type == "init":
+        return "initial_seed"
+    return event_type or "unknown"
+
+
+def _int_or_empty(value: Any) -> int | str:
+    if value in ("", None):
+        return ""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return ""
+
+
 def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -143,10 +172,14 @@ class GaussianIdentityTracker:
         output_dir: Path | None = None,
         view_group_map: dict[str, str] | None = None,
         evidence_quality: str = "exact",
+        integration_source: str = "fake_smoke_only",
+        parent_mapping_source: str = "exact_parent_indices",
     ) -> None:
         self.output_dir = output_dir
         self.view_group_map = dict(view_group_map or {})
         self.default_evidence_quality = evidence_quality
+        self.integration_source = integration_source
+        self.parent_mapping_source = parent_mapping_source
         self.scene = ""
         self.condition = ""
         self.subset_name = ""
@@ -328,7 +361,14 @@ class GaussianIdentityTracker:
         self._refresh_final_row_indices()
         return pruned_ids
 
-    def record_visibility_observation(self, visible_mask_or_indices: Any, iteration: int, view_name: str) -> None:
+    def record_visibility_observation(
+        self,
+        visible_mask_or_indices: Any,
+        iteration: int,
+        view_name: str,
+        view_index: int | None = None,
+    ) -> None:
+        effective_view_index = self._effective_view_index(view_name, view_index)
         for row_index in _indices_or_mask(visible_mask_or_indices, len(self.active_ids)):
             gaussian_id = self.active_ids[row_index]
             self._record_support(gaussian_id, view_name, "visibility")
@@ -337,7 +377,7 @@ class GaussianIdentityTracker:
             self._record_event(
                 iteration=iteration,
                 view_name=view_name,
-                view_index=self.current_view_index,
+                view_index=effective_view_index,
                 event_type="visibility_observation",
                 gaussian_id=gaussian_id,
                 parent_gaussian_id=state["parent_gaussian_id"],
@@ -350,16 +390,18 @@ class GaussianIdentityTracker:
                 evidence_quality=state["evidence_quality"],
                 notes="visibility observation only",
             )
-            self._record_attribution(iteration, view_name, gaussian_id, "visibility_observation", "visibility", 1.0)
+            self._record_attribution(iteration, view_name, gaussian_id, "visibility_observation", "visibility", 1.0, view_index=effective_view_index)
 
     def record_update_observation(
         self,
         indices: Any,
         iteration: int,
         view_name: str,
+        view_index: int | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         metadata = metadata or {}
+        effective_view_index = self._effective_view_index(view_name, view_index)
         for row_index in _indices_or_mask(indices, len(self.active_ids)):
             gaussian_id = self.active_ids[row_index]
             self._record_support(gaussian_id, view_name, "update")
@@ -368,7 +410,7 @@ class GaussianIdentityTracker:
             self._record_event(
                 iteration=iteration,
                 view_name=view_name,
-                view_index=self.current_view_index,
+                view_index=effective_view_index,
                 event_type="update_observation",
                 gaussian_id=gaussian_id,
                 parent_gaussian_id=state["parent_gaussian_id"],
@@ -381,7 +423,7 @@ class GaussianIdentityTracker:
                 evidence_quality=state["evidence_quality"],
                 notes=str(metadata.get("notes", "update observation only")),
             )
-            self._record_attribution(iteration, view_name, gaussian_id, "update_observation", "update", 1.0)
+            self._record_attribution(iteration, view_name, gaussian_id, "update_observation", "update", 1.0, view_index=effective_view_index)
 
     def compact_with_alive_mask(self, alive_mask: Any) -> None:
         bools = _mask_to_bools(alive_mask)
@@ -444,6 +486,103 @@ class GaussianIdentityTracker:
             self._record_attribution(iteration, view_name, gaussian_id, birth_event_type, "birth", 1.0)
         self._refresh_final_row_indices()
         return new_ids
+
+    @classmethod
+    def from_existing_lifecycle_tables(
+        cls,
+        *,
+        event_rows: list[dict[str, Any]],
+        final_rows: list[dict[str, Any]],
+        scene: str,
+        condition: str,
+        subset_name: str,
+        run_id: str,
+        view_group_map: dict[str, str] | None = None,
+        output_dir: Path | None = None,
+        integration_source: str = "real_view_influence_runner",
+    ) -> "GaussianIdentityTracker":
+        tracker = cls(
+            output_dir=output_dir,
+            view_group_map=view_group_map,
+            evidence_quality="exact",
+            integration_source=integration_source,
+            parent_mapping_source="exact_clone_split_masks",
+        )
+        tracker.scene = scene
+        tracker.condition = condition
+        tracker.subset_name = subset_name
+        tracker.run_id = run_id
+        ids = sorted(
+            {
+                int(str(row.get("gaussian_id")))
+                for row in [*event_rows, *final_rows]
+                if str(row.get("gaussian_id", "")).strip().lstrip("-").isdigit()
+            }
+        )
+        if not ids:
+            tracker.warnings.append("no gaussian_id rows available in existing lifecycle tables")
+            tracker.default_evidence_quality = "partial"
+            tracker.parent_mapping_source = "unavailable"
+            return tracker
+        tracker.next_id = max(ids) + 1
+        final_by_id = {str(row.get("gaussian_id", "")): row for row in final_rows}
+        birth_by_id: dict[str, dict[str, Any]] = {}
+        death_by_id: dict[str, dict[str, Any]] = {}
+        for row in event_rows:
+            gid = str(row.get("gaussian_id", "") or "")
+            event_type = str(row.get("event_type", "") or "")
+            if not gid:
+                continue
+            if "birth" in event_type and gid not in birth_by_id:
+                birth_by_id[gid] = row
+            if event_type == "prune_death":
+                death_by_id[gid] = row
+        for gaussian_id in ids:
+            gid = str(gaussian_id)
+            birth = birth_by_id.get(gid, {})
+            final = final_by_id.get(gid, {})
+            death = death_by_id.get(gid, {})
+            parent = birth.get("parent_gaussian_id", "") or final.get("parent_gaussian_id", "")
+            birth_type = _normalize_event_type(str(birth.get("event_type", "") or final.get("birth_type", "") or "initial_seed"))
+            if birth_type == "densify_birth_unknown" or (birth_type in {"clone_birth", "split_birth"} and parent in ("", None)):
+                tracker.default_evidence_quality = "partial"
+                tracker.parent_mapping_source = "partial"
+            tracker.states[gaussian_id] = tracker._new_state(
+                gaussian_id=gaussian_id,
+                parent_gaussian_id=_int_or_empty(parent),
+                root_gaussian_id=gaussian_id,
+                birth_iteration=int(float(birth.get("birth_iteration") or birth.get("iteration") or final.get("birth_iteration") or 0)),
+                birth_view_name=str(birth.get("source_view_name", "") or ""),
+                birth_event_type=birth_type,
+                final_row_index=final.get("final_index", ""),
+                evidence_quality=tracker.default_evidence_quality,
+            )
+            if death:
+                tracker.states[gaussian_id].update(
+                    {
+                        "prune_iteration": death.get("iteration", ""),
+                        "prune_view_name": death.get("source_view_name", ""),
+                        "death_event_type": "prune_death",
+                        "is_alive_final": False,
+                        "final_row_index": "",
+                    }
+                )
+        for gaussian_id in ids:
+            tracker.states[gaussian_id]["root_gaussian_id"] = tracker._root_for(gaussian_id)
+        tracker.active_ids = [
+            int(row.get("gaussian_id"))
+            for row in final_rows
+            if str(row.get("gaussian_id", "")).strip().lstrip("-").isdigit()
+            and str(row.get("alive", "")).lower() == "true"
+        ]
+        if not tracker.active_ids:
+            tracker.active_ids = [gaussian_id for gaussian_id in ids if tracker.states[gaussian_id]["is_alive_final"]]
+        tracker.initial_gaussian_count = sum(1 for state in tracker.states.values() if state["birth_event_type"] == "initial_seed")
+        if tracker.initial_gaussian_count == 0:
+            tracker.initial_gaussian_count = len(ids) - sum(1 for row in event_rows if "birth" in str(row.get("event_type", "")))
+        tracker._replay_existing_events(event_rows)
+        tracker._refresh_final_row_indices()
+        return tracker
 
     def export_identity_table(self) -> list[dict[str, Any]]:
         self._refresh_support_counts()
@@ -605,6 +744,7 @@ class GaussianIdentityTracker:
         event_type: str,
         attribution_type: str,
         contribution_value: float,
+        view_index: int | str | None = None,
     ) -> None:
         state = self.states[gaussian_id]
         self.attribution_rows.append(
@@ -614,7 +754,7 @@ class GaussianIdentityTracker:
                 "subset_name": self.subset_name,
                 "run_id": self.run_id,
                 "view_name": view_name,
-                "view_index": self.current_view_index,
+                "view_index": self._effective_view_index(view_name, view_index),
                 "iteration": iteration,
                 "gaussian_id": gaussian_id,
                 "event_type": event_type,
@@ -744,6 +884,8 @@ class GaussianIdentityTracker:
             "exact_gaussian_logging_enabled": True,
             "stable_gaussian_ids_enabled": True,
             "uses_row_index_as_stable_id": False,
+            "integration_source": self.integration_source,
+            "parent_mapping_source": self.parent_mapping_source,
             "total_initial_gaussians": self.initial_gaussian_count,
             "total_final_gaussians": len(self.active_ids),
             "total_unique_gaussian_ids": len(self.states),
@@ -759,6 +901,73 @@ class GaussianIdentityTracker:
             "evidence_quality": "partial" if "partial" in qualities else "exact",
             "warnings": self.warnings,
         }
+
+    def _effective_view_index(self, view_name: str, view_index: int | str | None = None) -> int | str:
+        if view_index not in (None, ""):
+            return view_index
+        inferred = _infer_view_index(view_name)
+        if inferred is not None:
+            return inferred
+        if view_name == self.current_view_name:
+            return self.current_view_index
+        return ""
+
+    def _root_for(self, gaussian_id: int) -> int:
+        seen = set()
+        current = gaussian_id
+        while current not in seen:
+            seen.add(current)
+            parent = self.states.get(current, {}).get("parent_gaussian_id", "")
+            if parent in ("", None):
+                return current
+            try:
+                current = int(parent)
+            except (TypeError, ValueError):
+                return gaussian_id
+            if current not in self.states:
+                return gaussian_id
+        return gaussian_id
+
+    def _replay_existing_events(self, event_rows: list[dict[str, Any]]) -> None:
+        for row in event_rows:
+            gid_text = str(row.get("gaussian_id", "") or "")
+            if not gid_text.lstrip("-").isdigit():
+                continue
+            gaussian_id = int(gid_text)
+            if gaussian_id not in self.states:
+                continue
+            state = self.states[gaussian_id]
+            event_type = _normalize_event_type(str(row.get("event_type", "") or "unknown"))
+            view_name = str(row.get("source_view_name", "") or "")
+            iteration = int(float(row.get("iteration") or row.get("source_iteration") or 0))
+            if view_name:
+                self._record_support(gaussian_id, view_name, "birth" if "birth" in event_type else "update")
+            self._record_event(
+                iteration=iteration,
+                view_name=view_name,
+                view_index=self._effective_view_index(view_name),
+                event_type=event_type,
+                gaussian_id=gaussian_id,
+                parent_gaussian_id=state["parent_gaussian_id"],
+                root_gaussian_id=state["root_gaussian_id"],
+                row_index_before=row.get("source_index", ""),
+                row_index_after=row.get("target_index", row.get("final_index", "")),
+                opacity_after=row.get("opacity", ""),
+                scale_after=row.get("scale_mean", ""),
+                is_alive_after_event=state["is_alive_final"],
+                event_source="existing_gaussian_lifecycle_events",
+                evidence_quality=state["evidence_quality"],
+                notes="replayed from real lifecycle runner output",
+            )
+            self._record_attribution(
+                iteration,
+                view_name,
+                gaussian_id,
+                event_type,
+                "lifecycle",
+                1.0,
+                view_index=self._effective_view_index(view_name),
+            )
 
     def _write_artifact_manifest(self, output_dir: Path) -> None:
         rows = []

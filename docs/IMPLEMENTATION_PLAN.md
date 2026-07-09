@@ -419,3 +419,13 @@ sidecar IDs and are explicitly distinct from mutable tensor row indices. This
 PR does not modify `third_party` or official training behavior; real 3DGS
 integration requires a later opt-in patch that passes clone/split/prune masks
 and view context into the sidecar tracker without changing optimization.
+
+PR19.2 Exact Gaussian Logging Runner Integration connects the PR19.1 exact
+schema to `scripts/measure/build_view_influence_table.py`, the existing
+ViewTrust runner that produces `view_influence.csv`,
+`view_lifecycle_attribution.csv`, and `view_iteration_events.csv`. Exact
+logging remains disabled by default and is enabled only with
+`--enable-exact-gaussian-logging`; the runner replays existing real lifecycle
+rows into PR19.1 exact log files without modifying `third_party` or training
+behavior. PR19 exact-mode discovery can consume these exact logs when they are
+stored under a view influence output directory.

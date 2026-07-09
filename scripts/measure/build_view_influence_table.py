@@ -83,6 +83,14 @@ def _bool_or_none(value: Any) -> bool | None:
     return None
 
 
+def _view_index_from_name(view_name: str) -> int | str:
+    token = str(view_name or "").rsplit("_", 1)[-1]
+    try:
+        return int(token)
+    except ValueError:
+        return ""
+
+
 def _wrapped_payload(payload: dict[str, Any], key: str) -> dict[str, Any]:
     nested = payload.get(key)
     return nested if isinstance(nested, dict) else payload
@@ -188,6 +196,11 @@ def build_view_influence(
     require_source_view: bool,
     progress_interval_rows: int = 50000,
     quiet: bool = False,
+    enable_exact_gaussian_logging: bool = False,
+    exact_gaussian_log_dir: Path | None = None,
+    exact_gaussian_logging_config: Path | None = None,
+    exact_gaussian_run_id: str | None = None,
+    subset_name: str = "",
 ) -> dict[str, Any]:
     started = time.perf_counter()
     timing: dict[str, float] = {}
@@ -550,6 +563,23 @@ def build_view_influence(
         warnings.append("observation_only source values disagree")
     observation_only = any(value is True for value in observation_only_sources.values())
 
+    exact_gaussian_summary: dict[str, Any] = {}
+    if enable_exact_gaussian_logging:
+        if exact_gaussian_log_dir is None:
+            raise ValueError("--exact-gaussian-log-dir is required when exact Gaussian logging is enabled")
+        exact_config = _json_file(exact_gaussian_logging_config) if exact_gaussian_logging_config else {}
+        if exact_config.get("labels", {}).get("use_corruption_labels_for_scoring") is True:
+            raise ValueError("exact Gaussian logging config must not use corruption labels for scoring")
+        exact_gaussian_summary = _write_exact_gaussian_logs_from_existing_lifecycle(
+            run_dir=run_dir,
+            output_dir=exact_gaussian_log_dir,
+            scene=scene,
+            condition=condition,
+            subset_name=subset_name,
+            run_id=exact_gaussian_run_id or f"{run_id}-exact-gaussian",
+            corruption_labels=corruption_labels,
+        )
+
     section_started = time.perf_counter()
     _write_csv(output_dir / "view_influence.csv", view_rows, view_fields)
     _write_csv(output_dir / "view_lifecycle_attribution.csv", attribution_rows, attribution_fields)
@@ -592,6 +622,14 @@ def build_view_influence(
             ),
         },
         "observation_only": observation_only,
+        "exact_gaussian_logging": {
+            "enabled": enable_exact_gaussian_logging,
+            "output_dir": str(exact_gaussian_log_dir) if exact_gaussian_log_dir else "",
+            "summary_schema": exact_gaussian_summary.get("schema_name", ""),
+            "evidence_quality": exact_gaussian_summary.get("evidence_quality", ""),
+            "integration_source": exact_gaussian_summary.get("integration_source", ""),
+            "parent_mapping_source": exact_gaussian_summary.get("parent_mapping_source", ""),
+        },
         "observation_only_sources": observation_only_sources,
         "training_event_invariants_ok": (_int_or_none(training_summary.get("invalid_training_event_rows")) or 0) == 0,
         "gaussian_lifecycle_invariants_ok": (_int_or_none(lifecycle_summary.get("invariant_violations")) or 0) == 0,
@@ -646,6 +684,75 @@ def build_view_influence(
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    return summary
+
+
+def _write_exact_gaussian_logs_from_existing_lifecycle(
+    *,
+    run_dir: Path,
+    output_dir: Path,
+    scene: str,
+    condition: str,
+    subset_name: str,
+    run_id: str,
+    corruption_labels: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    project_root = Path(__file__).resolve().parents[2]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from viewtrust.instrumentation.gaussian_identity_tracker import GaussianIdentityTracker
+
+    event_rows = _csv_rows(run_dir / "tables" / "gaussian_lifecycle_events.csv")
+    final_rows = _csv_rows(run_dir / "tables" / "gaussian_lifecycle_final.csv")
+    view_group_map = {
+        view_name: "direct_corrupted" if _truthy(label.get("was_corrupted")) else "other_clean"
+        for view_name, label in corruption_labels.items()
+    }
+    tracker = GaussianIdentityTracker.from_existing_lifecycle_tables(
+        event_rows=event_rows,
+        final_rows=final_rows,
+        scene=scene,
+        condition=condition,
+        subset_name=subset_name,
+        run_id=run_id,
+        view_group_map=view_group_map,
+        output_dir=output_dir,
+        integration_source="real_view_influence_runner",
+    )
+    for row in _csv_rows(run_dir / "tables" / "training_events.csv"):
+        if row.get("event_type") != "iteration_metrics":
+            continue
+        view_name = str(row.get("view_name", "") or "")
+        if not view_name:
+            continue
+        iteration = _int_or_none(row.get("iteration")) or 0
+        active_count = len(tracker.active_ids)
+        if active_count <= 0:
+            continue
+        visible_count = min(_int_or_none(row.get("visible_gaussian_count")) or 0, active_count)
+        gaussian_count = _int_or_none(row.get("gaussian_count")) or active_count
+        tracker.record_visibility_observation(
+            list(range(visible_count)),
+            iteration,
+            view_name,
+            view_index=_view_index_from_name(view_name),
+        )
+        tracker.record_update_observation(
+            list(range(min(max(visible_count, 1), active_count))),
+            iteration,
+            view_name,
+            view_index=_view_index_from_name(view_name),
+            metadata={
+                "notes": (
+                    "real view influence runner proxy update observation; "
+                    f"gaussian_count={gaussian_count}"
+                )
+            },
+        )
+    summary = tracker.write_outputs(output_dir)
+    validation = _json_file(output_dir / "exact_gaussian_logging_validation.json")
+    if not validation.get("identity_consistency_passed"):
+        raise ValueError("exact Gaussian logging validation failed during view influence integration")
     return summary
 
 
@@ -721,6 +828,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--progress-interval-rows", type=int, default=50000)
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--write-markdown", action="store_true")
+    parser.add_argument("--enable-exact-gaussian-logging", action="store_true")
+    parser.add_argument("--exact-gaussian-log-dir", type=Path)
+    parser.add_argument(
+        "--exact-gaussian-logging-config",
+        type=Path,
+        default=Path("configs/offline_viewtrust_signal/default_pr191_exact_gaussian_logging.json"),
+    )
+    parser.add_argument("--exact-gaussian-run-id")
+    parser.add_argument("--subset-name", default="")
     return parser.parse_args()
 
 
@@ -738,6 +854,11 @@ def main() -> int:
             require_source_view=args.require_source_view,
             progress_interval_rows=args.progress_interval_rows,
             quiet=args.quiet,
+            enable_exact_gaussian_logging=args.enable_exact_gaussian_logging,
+            exact_gaussian_log_dir=args.exact_gaussian_log_dir,
+            exact_gaussian_logging_config=args.exact_gaussian_logging_config,
+            exact_gaussian_run_id=args.exact_gaussian_run_id,
+            subset_name=args.subset_name,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
