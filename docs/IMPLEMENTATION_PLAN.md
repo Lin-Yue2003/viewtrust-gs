@@ -429,3 +429,12 @@ logging remains disabled by default and is enabled only with
 rows into PR19.1 exact log files without modifying `third_party` or training
 behavior. PR19 exact-mode discovery can consume these exact logs when they are
 stored under a view influence output directory.
+
+PR19.3 Exact View-Group Binding adds a post-hoc offline binding step that
+attaches PR17 / PR18 view-group semantics to PR19.2 exact Gaussian logs. It
+writes grouped exact tables, direct/collateral exact overlap diagnostics,
+train_013 exact control diagnostics, and an optional PR19-ready exact input
+bundle under `pr19_exact_input_bundle/exact_gaussian_logging/`. PR19.3 does
+not change PR19 scoring, PR17 normalization, PR18 diagnosis, training,
+rendering, `third_party`, loss reweighting, update suppression, densification
+gating, or defense behavior.

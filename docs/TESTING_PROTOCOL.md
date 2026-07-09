@@ -112,6 +112,10 @@ PR19.2 adds `pr192_exact_logging_runner_integration_smoke_test.py`, which
 validates that `build_view_influence_table.py` exposes opt-in exact logging
 flags and produces real-run-shaped exact Gaussian log files from lifecycle
 artifacts.
+PR19.3 adds `pr193_exact_view_group_binding_smoke_test.py`, which validates
+post-hoc PR17 / PR18 view-group binding onto fake PR19.2 exact Gaussian logs,
+direct/collateral exact Gaussian ID overlap, train_013 exact control behavior,
+grouped exact output tables, and PR19-ready bundle creation without CUDA.
 
 ## Observed Command Checks
 
@@ -187,6 +191,8 @@ compare_clean_corrupt_observations.py for clean vs natural-corrupt observed runs
 future multi-condition clean-vs-corrupt suites
 offline rank consistency analysis on real PR14.1 outputs
 PR16 planner and analyzer on real chair/drum subset outputs
+PR19.3 exact view-group binding on real PR19.2 exact chair/drums logs and
+review of direct/collateral overlap plus train_013 exact control diagnostics
 ```
 
 Command:
