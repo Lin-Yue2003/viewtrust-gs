@@ -120,6 +120,10 @@ PR19.4 adds `pr194_exact_support_filtering_smoke_test.py`, which validates
 strict support modes over fake PR19.3 grouped exact logs, broad support
 degeneracy detection, nontrivial high-event/direct-collateral overlap,
 train_013 control behavior by mode, and offline-only summary fields.
+PR19.5 adds `pr195_exact_attribution_semantics_smoke_test.py`, which validates
+support-mode failure classification, corrected PR19 exact-mode recommendation
+semantics, attribution field-gap reporting, PR20 readiness blocking, and
+offline-only summary fields with fake PR19.3 / PR19.4 outputs.
 
 ## Observed Command Checks
 
@@ -200,6 +204,9 @@ review of direct/collateral overlap plus train_013 exact control diagnostics
 PR19.4 exact support filtering on real PR19.3 chair/drums outputs and review
 of broad degeneracy, non-broad exact overlap, train_013 controls, and
 recommended PR19 exact mode
+PR19.5 exact attribution semantics audit on real PR19.3 / PR19.4 chair/drums
+outputs and review of corrected PR19 exact-mode recommendation plus PR20
+readiness blockers
 ```
 
 Command:

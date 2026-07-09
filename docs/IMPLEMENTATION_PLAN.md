@@ -447,3 +447,13 @@ identify whether any non-broad mode supports nontrivial direct/collateral exact
 Gaussian overlap while preserving train_013 as a clean-prior control. PR19.4
 does not change PR19.3 binding, PR19 scoring, PR17 / PR18 scoring, training,
 rendering, `third_party`, or any defense/intervention behavior.
+
+PR19.5 Exact Attribution Semantics Audit consumes PR19.3 and PR19.4 outputs to
+decide whether current exact lifecycle logs are semantically strong enough for
+PR19 exact-mode conclusions or PR20 intervention planning. It corrects PR19.4
+recommendation semantics so diagnostic train_013-only modes cannot be
+recommended as exact PR19 modes when nontrivial direct/collateral overlap is
+absent. It writes support-mode failure analysis, event semantics audits,
+required attribution field gaps, PR20 readiness criteria, and a next-step
+recommendation. PR19.5 remains offline-only and does not change training,
+rendering, `third_party`, scoring, or defense/intervention behavior.

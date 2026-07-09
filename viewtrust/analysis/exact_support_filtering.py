@@ -694,14 +694,14 @@ def _recommend_mode(comparison_rows: list[dict[str, Any]], train_rows: list[dict
     train_by_mode = {row["support_mode"]: row for row in train_rows}
     nontrivial = {row["support_mode"]: row for row in comparison_rows if _truth(row.get("nontrivial_overlap_supported"))}
     reasons: list[str] = []
+    if not nontrivial:
+        reasons.append("no nontrivial direct/collateral exact overlap; diagnostic train013 modes are not valid PR19 exact modes")
+        return "none", reasons
     for mode in ["suspicious_alive", "dominant_source"]:
         if mode in nontrivial and _truth(train_by_mode.get(mode, {}).get("train013_control_supported")):
             return mode, reasons
     if "high_event" in nontrivial:
         return "high_event", reasons
-    birth = next((row for row in comparison_rows if row["support_mode"] == "birth"), None)
-    if birth and int(birth.get("filtered_gaussian_count") or 0) > 0:
-        return "birth", reasons
     reasons.append("no non-degenerate support mode satisfied direct/collateral overlap and train013 control criteria")
     return "none", reasons
 
@@ -943,6 +943,7 @@ def analyze_exact_support_filters(
         "broad_overlap_degeneracy_detected": _truth(broad_row.get("broad_overlap_degeneracy_flag")),
         "nontrivial_modes_with_direct_collateral_overlap": nontrivial_modes,
         "modes_with_train013_control_supported": train_control_modes,
+        "diagnostic_modes_with_train013_control": train_control_modes,
         "recommended_pr19_exact_mode": recommended,
         "warnings": warnings,
     }
