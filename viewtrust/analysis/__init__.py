@@ -81,6 +81,15 @@ from viewtrust.analysis.gaussian_cluster_risk import (
     inspect_gaussian_id_availability,
     rank_cluster_risks,
 )
+from viewtrust.analysis.exact_gaussian_lifecycle import (
+    compute_exact_support_summary,
+    compute_exact_train013_control,
+    compute_exact_view_group_overlap,
+    load_exact_lifecycle_events,
+    load_gaussian_identity_table,
+    load_view_gaussian_attribution,
+    validate_exact_gaussian_logs,
+)
 from viewtrust.analysis.statistics import NumericSummary, summarize_numbers, summarize_table
 from viewtrust.analysis.tables import write_csv_table
 
@@ -124,6 +133,9 @@ __all__ = [
     "compute_spillover_summary",
     "compute_source_concentration",
     "compute_train013_control_summary",
+    "compute_exact_support_summary",
+    "compute_exact_train013_control",
+    "compute_exact_view_group_overlap",
     "condition_result_from_signal_dir",
     "discover_offline_signal_dirs",
     "discover_pr16_condition_output",
@@ -136,6 +148,9 @@ __all__ = [
     "load_pr16_plan",
     "load_pr17_rankings",
     "load_pr17_rows",
+    "load_exact_lifecycle_events",
+    "load_gaussian_identity_table",
+    "load_view_gaussian_attribution",
     "inspect_gaussian_id_availability",
     "mad",
     "positive_part",
@@ -153,6 +168,7 @@ __all__ = [
     "summarize_numbers",
     "summarize_table",
     "validate_offline_signal_dir",
+    "validate_exact_gaussian_logs",
     "write_artifact_manifest",
     "write_csv_table",
     "write_rank_consistency_report",

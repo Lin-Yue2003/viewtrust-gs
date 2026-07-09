@@ -1,0 +1,16 @@
+{
+  "schema_name": "viewtrust.pr191.exact_gaussian_lifecycle_logging.config",
+  "schema_version": 1,
+  "enabled": false,
+  "observation_only": true,
+  "log_visibility_observations": true,
+  "log_update_observations": true,
+  "log_survival_events": false,
+  "max_visibility_events_per_view": 200000,
+  "max_update_events_per_view": 200000,
+  "warn_if_exact_parent_mapping_unavailable": true,
+  "labels": {
+    "use_corruption_labels_for_scoring": false,
+    "use_corruption_labels_for_evaluation": true
+  }
+}

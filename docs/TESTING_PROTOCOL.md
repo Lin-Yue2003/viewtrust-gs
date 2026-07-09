@@ -105,6 +105,9 @@ PR19 adds `pr19_gaussian_cluster_risk_smoke_test.py`, which validates exact
 Gaussian-ID evidence, aggregate event proxy fallback, missing-input handling,
 train_013 control summaries, preview-only intervention candidates, and
 offline-only label-use guarantees.
+PR19.1 adds `pr191_exact_gaussian_logging_smoke_test.py`, which validates
+stable sidecar Gaussian IDs across clone, split, prune, compaction,
+visibility/update observations, exact log schemas, and validation CLI outputs.
 
 ## Observed Command Checks
 
@@ -673,6 +676,40 @@ defense_enabled = false
 uses_corruption_labels_for_scoring = false
 uses_corruption_labels_for_evaluation = true
 ```
+
+## PR19.1 Exact Gaussian Lifecycle Logging
+
+PR19.1 is optional logging infrastructure. It is disabled by default and does
+not modify training behavior:
+
+```bash
+python scripts/smoke/pr191_exact_gaussian_logging_smoke_test.py
+```
+
+Validate an exact log directory:
+
+```bash
+python scripts/measure/validate_pr191_exact_gaussian_logging.py \
+  --exact-log-dir "$EXACT_LOG_DIR" \
+  --output-dir "$PR191_VALIDATE_DIR" \
+  --write-markdown
+```
+
+Expected PR19.1 validation invariants:
+
+```text
+schema_name = viewtrust.pr191.exact_gaussian_lifecycle_logging.validation_summary
+observation_only = true
+training_intervention = false
+defense_enabled = false
+uses_row_index_as_stable_id = false
+```
+
+Current integration status: this repository now has the sidecar tracker,
+schemas, smoke test, and validation command. A real 3DGS exact logging run
+requires a later opt-in integration patch that passes clone/split/prune masks
+and view context into the tracker. Do not modify `third_party` silently for
+PR19.1.
 
 Recommended server validation flow:
 

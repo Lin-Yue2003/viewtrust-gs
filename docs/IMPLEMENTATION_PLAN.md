@@ -410,3 +410,12 @@ preview-only intervention candidate table where every row remains marked
 `do_not_apply_intervention = true`. PR19 does not change training, rendering,
 `third_party`, PR13 scoring, PR14 aggregation, PR15 analysis, PR16 behavior,
 PR17 normalization, PR18 diagnosis, or any defense/intervention behavior.
+
+PR19.1 Exact Gaussian Lifecycle Attribution Logging adds a CPU-only sidecar
+Gaussian identity tracker, exact log schemas, validation helpers, and local
+smoke coverage so future runs can produce `exact_gaussian_id` evidence instead
+of only `aggregate_event_proxy` clusters. Stable Gaussian IDs are monotonic
+sidecar IDs and are explicitly distinct from mutable tensor row indices. This
+PR does not modify `third_party` or official training behavior; real 3DGS
+integration requires a later opt-in patch that passes clone/split/prune masks
+and view context into the sidecar tracker without changing optimization.
