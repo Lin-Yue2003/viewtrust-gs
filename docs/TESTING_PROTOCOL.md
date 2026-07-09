@@ -124,6 +124,11 @@ PR19.5 adds `pr195_exact_attribution_semantics_smoke_test.py`, which validates
 support-mode failure classification, corrected PR19 exact-mode recommendation
 semantics, attribution field-gap reporting, PR20 readiness blocking, and
 offline-only summary fields with fake PR19.3 / PR19.4 outputs.
+PR20.0 adds `pr200_sparse_render_attribution_smoke_test.py`, which validates
+sparse residual pixel selection, residual-weighted proxy Gaussian attribution,
+direct/collateral residual overlap, train_013 residual controls, explicit
+approximate evidence quality, and no-intervention safety flags with tiny fake
+render/ground-truth images.
 
 ## Observed Command Checks
 
@@ -207,6 +212,10 @@ recommended PR19 exact mode
 PR19.5 exact attribution semantics audit on real PR19.3 / PR19.4 chair/drums
 outputs and review of corrected PR19 exact-mode recommendation plus PR20
 readiness blockers
+PR20.0 sparse render attribution on real PR19.3 / PR19.5 chair/drums outputs
+and existing rendered/ground-truth view pairs, with review of evidence quality,
+direct/collateral residual overlap, train_013 residual control, and missing
+exact renderer contribution limitations
 ```
 
 Command:

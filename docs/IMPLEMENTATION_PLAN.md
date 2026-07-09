@@ -457,3 +457,15 @@ absent. It writes support-mode failure analysis, event semantics audits,
 required attribution field gaps, PR20 readiness criteria, and a next-step
 recommendation. PR19.5 remains offline-only and does not change training,
 rendering, `third_party`, scoring, or defense/intervention behavior.
+
+PR20.0 Sparse Render-Contribution and Residual-Weighted Gaussian Attribution
+Logging adds an observation-only sparse residual attribution pipeline. It
+selects high-residual pixels from existing render/ground-truth image pairs and
+uses PR19.3 view-Gaussian attribution rows as an explicitly approximate
+Gaussian candidate source when exact per-pixel splat contributors are not
+available. It writes sparse pixel residuals, residual-weighted proxy
+pixel-Gaussian rows, Gaussian and view-group residual attribution summaries,
+direct/collateral residual overlap, train_013 residual controls, and quality
+audits. PR20.0 does not modify `third_party`, training behavior, rendering
+behavior used by training, optimization, scoring, or any defense/intervention
+behavior; `pr20_ready_for_intervention` remains false.
