@@ -478,3 +478,13 @@ train_013 proxy-pool separation, failure cases, and recommendations for exact
 sparse render contribution attribution. PR20.1 does not change PR20.0 output
 generation, training, rendering, `third_party`, scoring, or any
 defense/intervention behavior.
+
+PR21.0 gsplat Feasibility and Official-Checkpoint Replay Harness adds an
+observation-only audit for whether official 3DGS checkpoints, PLY schemas,
+camera metadata, selected views, installed `gsplat` APIs, and conversion
+metadata are sufficient to design exact sparse pixel-to-Gaussian attribution in
+PR21.1. It writes dependency, artifact, PLY, camera, selected-view, gsplat API,
+conversion, render-replay, blocker, recommendation, and manifest outputs. It
+does not implement exact attribution, render replay parity claims, training
+changes, rendering changes used by training, `third_party` changes, defense,
+view rejection, update suppression, or densification gating.

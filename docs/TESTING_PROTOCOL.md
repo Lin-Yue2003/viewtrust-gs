@@ -133,6 +133,10 @@ PR20.1 adds `pr201_proxy_degeneracy_smoke_test.py`, which validates candidate
 pool reuse detection, uniform weight detection, direct/collateral proxy overlap
 degeneracy, train_013 proxy-pool separation, recommendations, and
 no-intervention safety fields with fake PR20.0 outputs.
+PR21.0 adds `pr210_gsplat_feasibility_smoke_test.py`, which creates a tiny fake
+official-run layout with a PLY header, `cameras.json`, and render/GT PNG files,
+then validates the gsplat feasibility output bundle without requiring CUDA,
+`torch`, or `gsplat`.
 
 ## Observed Command Checks
 
@@ -224,6 +228,11 @@ PR20.1 proxy degeneracy diagnosis on real PR20.0 chair/drums outputs and
 aggregate chair+drums outputs, with review of pixel candidate reuse, candidate
 weight uniformity, direct/collateral proxy overlap, train_013 proxy-pool
 separation, and PR21 exact attribution recommendation
+PR21.0 gsplat feasibility probing on real PR16/PR20 official chair and drums
+run directories, with installed server `gsplat`, official point clouds,
+`cameras.json`, selected-view matching, PLY/camera conversion audits, gsplat API
+metadata probes, and explicit render-replay blockers or parity metrics if
+replay is later enabled
 ```
 
 Command:
