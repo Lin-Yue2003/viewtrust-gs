@@ -129,6 +129,10 @@ sparse residual pixel selection, residual-weighted proxy Gaussian attribution,
 direct/collateral residual overlap, train_013 residual controls, explicit
 approximate evidence quality, and no-intervention safety flags with tiny fake
 render/ground-truth images.
+PR20.1 adds `pr201_proxy_degeneracy_smoke_test.py`, which validates candidate
+pool reuse detection, uniform weight detection, direct/collateral proxy overlap
+degeneracy, train_013 proxy-pool separation, recommendations, and
+no-intervention safety fields with fake PR20.0 outputs.
 
 ## Observed Command Checks
 
@@ -216,6 +220,10 @@ PR20.0 sparse render attribution on real PR19.3 / PR19.5 chair/drums outputs
 and existing rendered/ground-truth view pairs, with review of evidence quality,
 direct/collateral residual overlap, train_013 residual control, and missing
 exact renderer contribution limitations
+PR20.1 proxy degeneracy diagnosis on real PR20.0 chair/drums outputs and
+aggregate chair+drums outputs, with review of pixel candidate reuse, candidate
+weight uniformity, direct/collateral proxy overlap, train_013 proxy-pool
+separation, and PR21 exact attribution recommendation
 ```
 
 Command:

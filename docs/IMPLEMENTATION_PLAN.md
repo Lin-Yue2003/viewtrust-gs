@@ -469,3 +469,12 @@ direct/collateral residual overlap, train_013 residual controls, and quality
 audits. PR20.0 does not modify `third_party`, training behavior, rendering
 behavior used by training, optimization, scoring, or any defense/intervention
 behavior; `pr20_ready_for_intervention` remains false.
+
+PR20.1 Proxy Degeneracy Diagnosis audits PR20.0 outputs to determine whether
+the approximate proxy degenerates into fixed view-level candidate pools and
+uniform per-pixel weights. It reports pixel candidate reuse, candidate pool
+overlap, weight uniformity, direct/collateral proxy overlap degeneracy,
+train_013 proxy-pool separation, failure cases, and recommendations for exact
+sparse render contribution attribution. PR20.1 does not change PR20.0 output
+generation, training, rendering, `third_party`, scoring, or any
+defense/intervention behavior.

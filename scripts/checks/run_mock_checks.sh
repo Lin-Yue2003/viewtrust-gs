@@ -45,6 +45,7 @@ python scripts/smoke/pr193_exact_view_group_binding_smoke_test.py
 python scripts/smoke/pr194_exact_support_filtering_smoke_test.py
 python scripts/smoke/pr195_exact_attribution_semantics_smoke_test.py
 python scripts/smoke/pr200_sparse_render_attribution_smoke_test.py
+python scripts/smoke/pr201_proxy_degeneracy_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 
 echo "mock checks ok"
