@@ -64,12 +64,49 @@ The server path attempts to:
 3. Build camera intrinsics/extrinsics from strict PR21.0a matched cameras.
 4. Run `gsplat.rasterization(..., packed=True)`.
 5. Audit returned metadata keys.
-6. Use `rasterize_to_indices_in_range` when available to recover sparse
+6. Resolve a valid transmittance tensor for `rasterize_to_indices_in_range`.
+7. Use `rasterize_to_indices_in_range` when available to recover sparse
    contributor IDs for selected pixels.
 
 If contributor IDs cannot be retrieved, PR21.1 writes blockers and
 `exact_attribution_succeeded = false`. It does not fabricate exact rows and
 does not silently fall back to PR20 proxy rows.
+
+## Transmittance Resolution
+
+PR21.1a fixes sparse contributor extraction for gsplat APIs that require an
+explicit `transmittances` argument. Candidate sources are:
+
+```text
+metadata.transmittances
+metadata.transmittance
+metadata.T
+metadata.final_T
+metadata.render_transmittances
+rasterization_output_1
+```
+
+A candidate is selected only if shape/device checks pass and a small dry-run
+call to `rasterize_to_indices_in_range` succeeds with non-empty contributor
+tensors. Render alpha is not blindly treated as transmittance. If no candidate
+passes, PR21.1a writes a `gsplat_transmittance_resolution` blocker and keeps
+exact rows empty.
+
+The contributor API call uses the explicit gsplat 1.5.3-style argument set:
+
+```text
+range_start
+range_end
+transmittances
+means2d
+conics
+opacities
+image_width
+image_height
+tile_size
+isect_offsets
+flatten_ids
+```
 
 ## Outputs
 
@@ -81,6 +118,9 @@ pr211_input_readiness_audit.csv
 pr211_checkpoint_activation_audit.csv
 pr211_selected_pixels.csv
 pr211_gsplat_metadata_audit.csv
+pr211_gsplat_contributor_api_audit.csv
+pr211_transmittance_audit.csv
+pr211_gsplat_rasterization_output_audit.csv
 pr211_exact_pixel_gaussian_contributions.csv
 pr211_gaussian_residual_attribution_exact.csv
 pr211_view_group_residual_attribution_exact.csv
@@ -118,3 +158,9 @@ failure analysis. This still does not justify intervention.
 If `exact_attribution_succeeded = false`, inspect `pr211_blockers.csv` and
 `pr211_gsplat_metadata_audit.csv`; fix sparse contributor extraction before
 comparison.
+
+When exact sparse replay fails, exact-vs-proxy rows report
+`exact unavailable due to failed sparse replay` instead of treating empty exact
+rows as a real difference from PR20 proxy candidates. Direct/collateral and
+train013 tables also mark exact evidence as unavailable rather than claiming no
+overlap.

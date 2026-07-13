@@ -15,6 +15,9 @@ REQUIRED_OUTPUTS = [
     "pr211_checkpoint_activation_audit.csv",
     "pr211_selected_pixels.csv",
     "pr211_gsplat_metadata_audit.csv",
+    "pr211_gsplat_contributor_api_audit.csv",
+    "pr211_transmittance_audit.csv",
+    "pr211_gsplat_rasterization_output_audit.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
     "pr211_gaussian_residual_attribution_exact.csv",
     "pr211_view_group_residual_attribution_exact.csv",
@@ -233,7 +236,10 @@ def main() -> int:
     import sys
 
     sys.path.insert(0, str(project_root))
-    from viewtrust.analysis.gsplat_sparse_attribution import build_pr211_exact_sparse_attribution
+    from viewtrust.analysis.gsplat_sparse_attribution import (
+        _call_rasterize_to_indices_in_range_safely,
+        build_pr211_exact_sparse_attribution,
+    )
 
     with tempfile.TemporaryDirectory(prefix="viewtrust-pr211-") as tmp:
         root = Path(tmp)
@@ -266,6 +272,12 @@ def main() -> int:
         assert summary["ready_for_intervention"] is False
         assert summary["exact_attribution_succeeded"] is True
         assert summary["evidence_quality"] == "exact_sparse_render_contribution"
+        assert summary["exact_contributor_ids_available"] is True
+        assert summary["exact_contribution_row_count"] > 0
+        assert summary["transmittance_resolution_succeeded"] is True
+        assert summary["contributor_api_dry_run_succeeded"] is True
+        assert summary["rasterize_to_indices_call_succeeded"] is True
+        assert summary["selected_pixel_hit_count"] > 0
         direct = list(csv.DictReader((success_dir / "pr211_direct_collateral_exact_overlap.csv").open()))
         assert direct[0]["overlap_count"] == "1"
         train = list(csv.DictReader((success_dir / "pr211_train013_exact_control.csv").open()))
@@ -295,11 +307,45 @@ def main() -> int:
         assert failure_code == 0
         _assert_outputs(failure_dir)
         assert failure_summary["exact_attribution_succeeded"] is False
+        assert failure_summary["transmittance_resolution_succeeded"] is False
+        assert failure_summary["exact_contribution_row_count"] == 0
         assert failure_summary["ready_for_intervention"] is False
         exact_rows = list(csv.DictReader((failure_dir / "pr211_exact_pixel_gaussian_contributions.csv").open()))
         assert not exact_rows
         blockers = (failure_dir / "pr211_blockers.csv").read_text(encoding="utf-8")
+        assert "gsplat_transmittance_resolution" in blockers
         assert "exact contributor IDs unavailable" in blockers
+        comparison = list(csv.DictReader((failure_dir / "pr211_exact_vs_proxy_comparison.csv").open()))
+        assert comparison
+        assert all(row["interpretation"] == "exact unavailable due to failed sparse replay" for row in comparison)
+        trans_rows = list(csv.DictReader((failure_dir / "pr211_transmittance_audit.csv").open()))
+        assert trans_rows
+        assert trans_rows[0]["selected_as_transmittance"] == "false"
+        assert "view_event_weighted_gaussian_proxy" not in (failure_dir / "pr211_exact_pixel_gaussian_contributions.csv").read_text(encoding="utf-8")
+
+        recorded: dict[str, object] = {}
+
+        def fake_rasterize_to_indices_in_range(**kwargs: object) -> tuple[list[int], list[int], list[int]]:
+            recorded.update(kwargs)
+            if "transmittances" not in kwargs or kwargs["transmittances"] is None:
+                raise AssertionError("transmittances missing")
+            return [1], [2], [0]
+
+        _call_rasterize_to_indices_in_range_safely(
+            fake_rasterize_to_indices_in_range,
+            range_start=0,
+            range_end=1,
+            transmittances=[0.5],
+            means2d=[0.0],
+            conics=[0.0],
+            opacities=[0.9],
+            image_width=8,
+            image_height=8,
+            tile_size=16,
+            isect_offsets=[0],
+            flatten_ids=[1],
+        )
+        assert "transmittances" in recorded
     print("pr211 exact sparse attribution smoke test ok")
     return 0
 

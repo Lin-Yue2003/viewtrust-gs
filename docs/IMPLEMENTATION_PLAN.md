@@ -506,3 +506,14 @@ exact IDs are unavailable, it writes blockers and does not fabricate exact
 evidence. PR21.1 remains observation-only; `ready_for_intervention` stays
 false and no training, rendering, `third_party`, defense, view rejection,
 update suppression, or densification gating behavior is changed.
+
+PR21.1a fixes sparse contributor extraction for gsplat APIs that require an
+explicit `transmittances` tensor. It audits rasterization return tensors,
+candidate transmittance sources, and contributor API compatibility before
+calling `rasterize_to_indices_in_range` with the full gsplat 1.5.3-style
+signature. If no valid transmittance source exists or selected-pixel filtering
+fails, exact rows remain empty and blockers explain the failure. PR21.1a also
+corrects failed-replay table wording so empty exact rows are not interpreted as
+real exact/proxy differences or no-overlap evidence. It remains observation-only
+and does not change training, rendering, `third_party`, or intervention
+behavior.

@@ -23,6 +23,9 @@ PR211_OUTPUT_FILES = [
     "pr211_checkpoint_activation_audit.csv",
     "pr211_selected_pixels.csv",
     "pr211_gsplat_metadata_audit.csv",
+    "pr211_gsplat_contributor_api_audit.csv",
+    "pr211_transmittance_audit.csv",
+    "pr211_gsplat_rasterization_output_audit.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
     "pr211_gaussian_residual_attribution_exact.csv",
     "pr211_view_group_residual_attribution_exact.csv",
@@ -55,6 +58,32 @@ SELECTED_PIXEL_FIELDS = [
     "official_gt_path",
 ]
 METADATA_FIELDS = ["metadata_key", "available", "type", "shape", "dtype", "device", "used_for", "notes"]
+CONTRIBUTOR_API_FIELDS = [
+    "api_name",
+    "available",
+    "signature",
+    "required_arguments",
+    "provided_arguments",
+    "compatible",
+    "dry_run_attempted",
+    "dry_run_succeeded",
+    "dry_run_error",
+    "notes",
+]
+TRANSMITTANCE_FIELDS = [
+    "candidate_source",
+    "available",
+    "type",
+    "shape",
+    "dtype",
+    "device",
+    "shape_compatible",
+    "dry_run_attempted",
+    "dry_run_succeeded",
+    "selected_as_transmittance",
+    "notes",
+]
+RASTER_OUTPUT_FIELDS = ["output_name", "available", "type", "shape", "dtype", "device", "notes"]
 EXACT_FIELDS = [
     "scene",
     "condition",
@@ -361,6 +390,355 @@ def _metadata_audit(meta: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _value_type_shape(value: Any) -> tuple[str, str, str, str]:
+    shape = getattr(value, "shape", "")
+    dtype = getattr(value, "dtype", "")
+    device = getattr(value, "device", "")
+    return type(value).__name__, str(tuple(shape)) if shape != "" else "", str(dtype), str(device)
+
+
+def _rasterization_output_audit(outputs: tuple[Any, ...], meta: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, value in enumerate(outputs):
+        value_type, shape, dtype, device = _value_type_shape(value)
+        rows.append(
+            {
+                "output_name": f"rasterization_output_{index}",
+                "available": "true",
+                "type": value_type,
+                "shape": shape,
+                "dtype": dtype,
+                "device": device,
+                "notes": "captured raw rasterization return value",
+            }
+        )
+    for key in sorted(meta):
+        value_type, shape, dtype, device = _value_type_shape(meta[key])
+        rows.append(
+            {
+                "output_name": f"metadata.{key}",
+                "available": "true",
+                "type": value_type,
+                "shape": shape,
+                "dtype": dtype,
+                "device": device,
+                "notes": "captured rasterization metadata value",
+            }
+        )
+    if not rows:
+        rows.append({"output_name": "", "available": "false", "type": "", "shape": "", "dtype": "", "device": "", "notes": "no rasterization outputs captured"})
+    return rows
+
+
+def _find_gsplat_callable(name: str) -> Any | None:
+    for module_name in ["gsplat", "gsplat.cuda", "gsplat.cuda._wrapper"]:
+        try:
+            module = __import__(module_name, fromlist=[name])
+            obj = getattr(module, name, None)
+            if obj is not None:
+                return obj
+        except Exception:
+            continue
+    return None
+
+
+def _required_args(signature: inspect.Signature) -> list[str]:
+    return [
+        name
+        for name, param in signature.parameters.items()
+        if param.default is inspect.Parameter.empty
+        and param.kind in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    ]
+
+
+def _call_rasterize_to_indices_in_range_safely(
+    api: Any,
+    *,
+    range_start: int,
+    range_end: int,
+    transmittances: Any,
+    means2d: Any,
+    conics: Any,
+    opacities: Any,
+    image_width: int,
+    image_height: int,
+    tile_size: int,
+    isect_offsets: Any,
+    flatten_ids: Any,
+) -> Any:
+    if transmittances is None:
+        raise ValueError("transmittances is required")
+    return api(
+        range_start=range_start,
+        range_end=range_end,
+        transmittances=transmittances,
+        means2d=means2d,
+        conics=conics,
+        opacities=opacities,
+        image_width=image_width,
+        image_height=image_height,
+        tile_size=tile_size,
+        isect_offsets=isect_offsets,
+        flatten_ids=flatten_ids,
+    )
+
+
+def _looks_like_tensor(value: Any) -> bool:
+    return hasattr(value, "shape") and hasattr(value, "dtype") and hasattr(value, "device")
+
+
+def _candidate_shape_compatible(candidate: Any, meta: dict[str, Any]) -> bool:
+    if not _looks_like_tensor(candidate):
+        return False
+    means = meta.get("means2d")
+    if _looks_like_tensor(means) and str(getattr(candidate, "device", "")) != str(getattr(means, "device", "")):
+        return False
+    shape = tuple(getattr(candidate, "shape", ()))
+    return bool(shape)
+
+
+def _api_audit_row(
+    *,
+    api_name: str,
+    api: Any | None,
+    provided_arguments: list[str],
+    dry_run_attempted: bool,
+    dry_run_succeeded: bool,
+    dry_run_error: str,
+    notes: str = "",
+) -> dict[str, Any]:
+    if api is None:
+        return {
+            "api_name": api_name,
+            "available": "false",
+            "signature": "",
+            "required_arguments": "",
+            "provided_arguments": ";".join(provided_arguments),
+            "compatible": "false",
+            "dry_run_attempted": _bool_text(dry_run_attempted),
+            "dry_run_succeeded": _bool_text(dry_run_succeeded),
+            "dry_run_error": dry_run_error,
+            "notes": notes or "API unavailable",
+        }
+    try:
+        signature = inspect.signature(api)
+        required = _required_args(signature)
+    except Exception as exc:
+        signature = None
+        required = []
+        notes = notes or f"signature unavailable: {exc}"
+    compatible = bool(signature) and set(required).issubset(set(provided_arguments))
+    return {
+        "api_name": api_name,
+        "available": "true",
+        "signature": str(signature) if signature else "",
+        "required_arguments": ";".join(required),
+        "provided_arguments": ";".join(provided_arguments),
+        "compatible": _bool_text(compatible),
+        "dry_run_attempted": _bool_text(dry_run_attempted),
+        "dry_run_succeeded": _bool_text(dry_run_succeeded),
+        "dry_run_error": dry_run_error,
+        "notes": notes,
+    }
+
+
+def _transmittance_audit_row(
+    *,
+    source: str,
+    value: Any,
+    available: bool,
+    shape_compatible: bool,
+    dry_run_attempted: bool,
+    dry_run_succeeded: bool,
+    selected: bool,
+    notes: str,
+) -> dict[str, Any]:
+    value_type, shape, dtype, device = _value_type_shape(value) if available else ("", "", "", "")
+    return {
+        "candidate_source": source,
+        "available": _bool_text(available),
+        "type": value_type,
+        "shape": shape,
+        "dtype": dtype,
+        "device": device,
+        "shape_compatible": _bool_text(shape_compatible),
+        "dry_run_attempted": _bool_text(dry_run_attempted),
+        "dry_run_succeeded": _bool_text(dry_run_succeeded),
+        "selected_as_transmittance": _bool_text(selected),
+        "notes": notes,
+    }
+
+
+def _normalize_api_result(result: Any) -> tuple[Any | None, Any | None, Any | None]:
+    if not isinstance(result, (tuple, list)) or len(result) < 3:
+        return None, None, None
+    return result[0], result[1], result[2]
+
+
+def _result_nonempty(result: Any) -> bool:
+    gaussian_ids, pixel_ids, image_ids = _normalize_api_result(result)
+    del pixel_ids, image_ids
+    if gaussian_ids is None:
+        return False
+    try:
+        return int(getattr(gaussian_ids, "numel")()) > 0
+    except Exception:
+        try:
+            return len(gaussian_ids) > 0
+        except Exception:
+            return False
+
+
+def _resolve_transmittance_source(
+    *,
+    api: Any,
+    meta: dict[str, Any],
+    raster_outputs: tuple[Any, ...],
+    image_width: int,
+    image_height: int,
+) -> tuple[Any | None, str, list[dict[str, Any]], list[dict[str, Any]], bool, str]:
+    required_meta = ["means2d", "conics", "opacities", "isect_offsets", "flatten_ids"]
+    missing = [key for key in required_meta if key not in meta]
+    tile_size = int(meta.get("tile_size", 16))
+    provided_args = [
+        "range_start",
+        "range_end",
+        "transmittances",
+        "means2d",
+        "conics",
+        "opacities",
+        "image_width",
+        "image_height",
+        "tile_size",
+        "isect_offsets",
+        "flatten_ids",
+    ]
+    api_rows: list[dict[str, Any]] = []
+    trans_rows: list[dict[str, Any]] = []
+    if api is None:
+        api_rows.append(
+            _api_audit_row(
+                api_name="rasterize_to_indices_in_range",
+                api=None,
+                provided_arguments=provided_args,
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                dry_run_error="",
+                notes="API unavailable",
+            )
+        )
+        return None, "", trans_rows, api_rows, False, "rasterize_to_indices_in_range unavailable"
+    if missing:
+        api_rows.append(
+            _api_audit_row(
+                api_name="rasterize_to_indices_in_range",
+                api=api,
+                provided_arguments=[arg for arg in provided_args if arg != "transmittances"],
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                dry_run_error=f"missing metadata: {missing}",
+                notes="metadata incomplete",
+            )
+        )
+        return None, "", trans_rows, api_rows, False, f"missing metadata: {missing}"
+
+    candidates: list[tuple[str, Any]] = []
+    for key in ["transmittances", "transmittance", "T", "final_T", "render_transmittances"]:
+        candidates.append((f"metadata.{key}", meta.get(key)))
+    if len(raster_outputs) > 1:
+        candidates.append(("rasterization_output_1", raster_outputs[1]))
+    dry_run_end = min(max(1, image_width * image_height), 4096)
+    selected_tensor = None
+    selected_source = ""
+    selected_success = False
+    dry_run_error = ""
+    for source, candidate in candidates:
+        available = candidate is not None
+        compatible = available and _candidate_shape_compatible(candidate, meta)
+        attempted = bool(compatible)
+        succeeded = False
+        notes = ""
+        if attempted:
+            try:
+                result = _call_rasterize_to_indices_in_range_safely(
+                    api,
+                    range_start=0,
+                    range_end=dry_run_end,
+                    transmittances=candidate,
+                    means2d=meta["means2d"],
+                    conics=meta["conics"],
+                    opacities=meta["opacities"],
+                    image_width=image_width,
+                    image_height=image_height,
+                    tile_size=tile_size,
+                    isect_offsets=meta["isect_offsets"],
+                    flatten_ids=meta["flatten_ids"],
+                )
+                succeeded = _result_nonempty(result)
+                notes = "dry-run returned non-empty contributor tensors" if succeeded else "dry-run returned no contributors"
+            except Exception as exc:
+                dry_run_error = repr(exc)
+                notes = dry_run_error
+        elif not available:
+            notes = "candidate unavailable"
+        else:
+            notes = "candidate tensor shape/device incompatible"
+        select = selected_tensor is None and succeeded
+        if select:
+            selected_tensor = candidate
+            selected_source = source
+            selected_success = True
+        trans_rows.append(
+            _transmittance_audit_row(
+                source=source,
+                value=candidate,
+                available=available,
+                shape_compatible=bool(compatible),
+                dry_run_attempted=attempted,
+                dry_run_succeeded=succeeded,
+                selected=select,
+                notes=notes,
+            )
+        )
+    if not candidates:
+        trans_rows.append(
+            _transmittance_audit_row(
+                source="unavailable",
+                value=None,
+                available=False,
+                shape_compatible=False,
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                selected=False,
+                notes="no transmittance candidates",
+            )
+        )
+    api_rows.append(
+        _api_audit_row(
+            api_name="rasterize_to_indices_in_range",
+            api=api,
+            provided_arguments=provided_args,
+            dry_run_attempted=any(row["dry_run_attempted"] == "true" for row in trans_rows),
+            dry_run_succeeded=selected_success,
+            dry_run_error="" if selected_success else dry_run_error,
+            notes=f"selected transmittance source: {selected_source}" if selected_success else "no valid transmittance source selected",
+        )
+    )
+    accumulate = _find_gsplat_callable("accumulate")
+    api_rows.append(
+        _api_audit_row(
+            api_name="accumulate",
+            api=accumulate,
+            provided_arguments=[],
+            dry_run_attempted=False,
+            dry_run_succeeded=False,
+            dry_run_error="",
+            notes="audited for future scalar reconstruction",
+        )
+    )
+    return selected_tensor, selected_source, trans_rows, api_rows, selected_success, "" if selected_success else "unable to resolve valid transmittances tensor for rasterize_to_indices_in_range"
+
+
 def _activation_audit(rows: list[dict[str, Any]], device: str) -> list[dict[str, Any]]:
     by_step = {row.get("conversion_step", ""): row for row in rows}
     return [
@@ -520,6 +898,23 @@ def _aggregate_groups(rows: list[dict[str, Any]], selected_pixels: list[dict[str
 
 
 def _direct_collateral(rows: list[dict[str, Any]], scene: str, condition: str, subset_name: str) -> dict[str, Any]:
+    if not rows:
+        return {
+            "scene": scene,
+            "condition": condition,
+            "subset_name": subset_name,
+            "direct_view_names": "",
+            "collateral_view_names": "",
+            "direct_unique_exact_gaussian_count": "",
+            "collateral_unique_exact_gaussian_count": "",
+            "overlap_count": "",
+            "jaccard": "",
+            "overlap_ratio_over_direct": "",
+            "overlap_ratio_over_collateral": "",
+            "nontrivial_exact_overlap_supported": "false",
+            "evidence_quality": "failed_exact_sparse_replay",
+            "interpretation": "exact unavailable due to failed sparse replay",
+        }
     direct_views = sorted({str(row.get("view_name", "")) for row in rows if row.get("view_group") == "direct_corrupted"})
     collateral_views = sorted({str(row.get("view_name", "")) for row in rows if row.get("view_group") == "co_visible_collateral"})
     direct = {str(row.get("gaussian_id", "")) for row in rows if row.get("view_group") == "direct_corrupted"}
@@ -545,6 +940,20 @@ def _direct_collateral(rows: list[dict[str, Any]], scene: str, condition: str, s
 
 
 def _train013_control(rows: list[dict[str, Any]], scene: str, condition: str, subset_name: str) -> dict[str, Any]:
+    if not rows:
+        return {
+            "scene": scene,
+            "condition": condition,
+            "subset_name": subset_name,
+            "train013_present": "",
+            "train013_unique_exact_gaussian_count": "",
+            "direct_collateral_unique_exact_gaussian_count": "",
+            "overlap_count": "",
+            "overlap_ratio": "",
+            "train013_exact_control_supported": "false",
+            "evidence_quality": "failed_exact_sparse_replay",
+            "interpretation": "exact unavailable due to failed sparse replay",
+        }
     train = {str(row.get("gaussian_id", "")) for row in rows if row.get("view_name") == "train_013"}
     direct_collateral = {
         str(row.get("gaussian_id", ""))
@@ -584,6 +993,7 @@ def _proxy_comparison(rows: list[dict[str, Any]], proxy_by_pixel: dict[tuple[str
         exact_weights = [_number(row.get("splat_weight")) for row in exact_rows if row.get("splat_weight") not in ("", None)]
         proxy_uniform = len({round(value, 12) for value in proxy_weights}) <= 1 if proxy_weights else ""
         exact_cv = _cv(exact_weights)
+        exact_unavailable = not rows
         out.append(
             {
                 "scene": scene,
@@ -600,7 +1010,11 @@ def _proxy_comparison(rows: list[dict[str, Any]], proxy_by_pixel: dict[tuple[str
                 "proxy_not_in_exact_count": len(proxy_ids - exact_ids),
                 "proxy_weight_uniform": _bool_text(proxy_uniform) if proxy_uniform != "" else "",
                 "exact_weight_cv": exact_cv,
-                "interpretation": "exact differs from proxy" if exact_ids != proxy_ids else "exact and proxy IDs match for this pixel",
+                "interpretation": "exact unavailable due to failed sparse replay"
+                if exact_unavailable
+                else "exact differs from proxy"
+                if exact_ids != proxy_ids
+                else "exact and proxy IDs match for this pixel",
             }
         )
     return out
@@ -744,18 +1158,43 @@ def _try_server_gsplat_replay(
     iteration: int,
     device: str,
     max_contributors_per_pixel: int,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> dict[str, Any]:
     blockers: list[dict[str, Any]] = []
     metadata_rows: list[dict[str, Any]] = []
     exact_rows: list[dict[str, Any]] = []
     missing_rows: list[dict[str, Any]] = []
+    api_rows: list[dict[str, Any]] = []
+    transmittance_rows: list[dict[str, Any]] = []
+    raster_output_rows: list[dict[str, Any]] = []
+    status: dict[str, Any] = {
+        "transmittance_source_selected": "",
+        "gsplat_rasterization_succeeded": False,
+        "transmittance_resolution_succeeded": False,
+        "contributor_api_dry_run_succeeded": False,
+        "rasterize_to_indices_call_succeeded": False,
+        "sparse_contributor_filter_succeeded": False,
+        "selected_pixel_hit_count": 0,
+        "selected_pixel_no_hit_count": len(selected_pixels),
+        "selected_pixel_hit_rate": 0.0,
+        "pixel_id_convention": "pixel_id = y * width + x",
+        "image_id_mapping_supported": False,
+    }
     try:
         import numpy as np
         import torch
         import gsplat
     except Exception as exc:
         blockers.append(_blocker("error", "dependency", "torch/gsplat import failed", str(exc), "run inside server viewtrust-p0 environment"))
-        return exact_rows, metadata_rows, missing_rows, blockers
+        return {
+            "exact_rows": exact_rows,
+            "metadata_rows": metadata_rows,
+            "missing_rows": missing_rows,
+            "blockers": blockers,
+            "api_rows": api_rows,
+            "transmittance_rows": transmittance_rows,
+            "raster_output_rows": raster_output_rows,
+            "status": status,
+        }
 
     try:
         ply_path = run_dir / "trainer_output" / "point_cloud" / f"iteration_{iteration}" / "point_cloud.ply"
@@ -766,8 +1205,19 @@ def _try_server_gsplat_replay(
         if rasterization is None:
             rendering = __import__("gsplat.rendering", fromlist=["rasterization"])
             rasterization = getattr(rendering, "rasterization")
+        api_rows.append(
+            _api_audit_row(
+                api_name="gsplat.rendering.rasterization",
+                api=rasterization,
+                provided_arguments=["means", "quats", "scales", "opacities", "colors", "viewmats", "Ks", "width", "height", "packed"],
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                dry_run_error="",
+                notes="main replay call",
+            )
+        )
         with torch.no_grad():
-            _, _, meta = rasterization(
+            raster_outputs = rasterization(
                 means=tensors["means"],
                 quats=tensors["quats"],
                 scales=tensors["scales"],
@@ -779,9 +1229,50 @@ def _try_server_gsplat_replay(
                 height=int(cameras["height"]),
                 packed=True,
             )
+        if not isinstance(raster_outputs, tuple) or len(raster_outputs) < 3:
+            raise RuntimeError(f"unexpected rasterization return type: {type(raster_outputs)}")
+        meta = raster_outputs[2]
+        if not isinstance(meta, dict):
+            raise RuntimeError(f"unexpected rasterization metadata type: {type(meta)}")
         metadata_rows = _metadata_audit(meta)
-        contributor_rows = _extract_contributors_with_gsplat_api(
+        raster_output_rows = _rasterization_output_audit(tuple(raster_outputs), meta)
+        status["gsplat_rasterization_succeeded"] = True
+        api = _find_gsplat_callable("rasterize_to_indices_in_range")
+        transmittances, source, transmittance_rows, api_trans_rows, trans_ok, trans_error = _resolve_transmittance_source(
+            api=api,
             meta=meta,
+            raster_outputs=tuple(raster_outputs),
+            image_width=int(cameras["width"]),
+            image_height=int(cameras["height"]),
+        )
+        api_rows.extend(api_trans_rows)
+        status["transmittance_source_selected"] = source
+        status["transmittance_resolution_succeeded"] = trans_ok
+        status["contributor_api_dry_run_succeeded"] = trans_ok
+        if not trans_ok:
+            blockers.append(
+                _blocker(
+                    "error",
+                    "gsplat_transmittance_resolution",
+                    "unable to resolve valid transmittances tensor for rasterize_to_indices_in_range",
+                    f"metadata_keys={sorted(meta.keys())}; raster_outputs={[row.get('shape', '') for row in raster_output_rows]}; error={trans_error}",
+                    "inspect gsplat 1.5.3 API/source or use a lower-level gsplat contributor path",
+                )
+            )
+            return {
+                "exact_rows": exact_rows,
+                "metadata_rows": metadata_rows,
+                "missing_rows": missing_rows,
+                "blockers": blockers,
+                "api_rows": api_rows,
+                "transmittance_rows": transmittance_rows,
+                "raster_output_rows": raster_output_rows,
+                "status": status,
+            }
+        contributor_rows = _extract_contributors_with_gsplat_api(
+            api=api,
+            meta=meta,
+            transmittances=transmittances,
             image_width=int(cameras["width"]),
             image_height=int(cameras["height"]),
             selected_views=selected_views,
@@ -790,6 +1281,14 @@ def _try_server_gsplat_replay(
             torch=torch,
         )
         exact_rows.extend(contributor_rows)
+        status["rasterize_to_indices_call_succeeded"] = True
+        selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in selected_pixels}
+        hit_keys = {(row["view_name"], int(row["pixel_id"])) for row in exact_rows}
+        status["selected_pixel_hit_count"] = len(hit_keys)
+        status["selected_pixel_no_hit_count"] = max(0, len(selected_keys - hit_keys))
+        status["selected_pixel_hit_rate"] = len(hit_keys) / len(selected_keys) if selected_keys else 0.0
+        status["sparse_contributor_filter_succeeded"] = bool(hit_keys)
+        status["image_id_mapping_supported"] = bool(exact_rows)
         if not contributor_rows:
             blockers.append(
                 _blocker(
@@ -804,6 +1303,21 @@ def _try_server_gsplat_replay(
         blockers.append(_blocker("error", "gsplat_sparse_replay", "gsplat sparse replay failed", repr(exc), "fix tensor/camera/API conversion before PR21.2"))
     if not metadata_rows:
         metadata_rows = [{"metadata_key": "", "available": "false", "type": "", "shape": "", "dtype": "", "device": "", "used_for": "", "notes": "gsplat replay did not produce metadata"}]
+    if not raster_output_rows:
+        raster_output_rows = [{"output_name": "", "available": "false", "type": "", "shape": "", "dtype": "", "device": "", "notes": "gsplat replay did not produce rasterization outputs"}]
+    if not transmittance_rows:
+        transmittance_rows = [
+            _transmittance_audit_row(
+                source="unavailable",
+                value=None,
+                available=False,
+                shape_compatible=False,
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                selected=False,
+                notes="no transmittance candidates audited",
+            )
+        ]
     if exact_rows:
         for field in ("alpha_contribution", "transmittance_before", "splat_weight"):
             if not any(row.get(field) not in ("", None) for row in exact_rows):
@@ -817,7 +1331,16 @@ def _try_server_gsplat_replay(
                         "notes": "no proxy fallback used",
                     }
                 )
-    return exact_rows, metadata_rows, missing_rows, blockers
+    return {
+        "exact_rows": exact_rows,
+        "metadata_rows": metadata_rows,
+        "missing_rows": missing_rows,
+        "blockers": blockers,
+        "api_rows": api_rows,
+        "transmittance_rows": transmittance_rows,
+        "raster_output_rows": raster_output_rows,
+        "status": status,
+    }
 
 
 def _load_checkpoint_tensors(ply_path: Path, *, device: str, np: Any, torch: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -891,7 +1414,9 @@ def _load_camera_tensors(cameras_json_path: Path, selected_views: list[dict[str,
 
 def _extract_contributors_with_gsplat_api(
     *,
+    api: Any,
     meta: dict[str, Any],
+    transmittances: Any,
     image_width: int,
     image_height: int,
     selected_views: list[dict[str, str]],
@@ -899,46 +1424,24 @@ def _extract_contributors_with_gsplat_api(
     max_contributors_per_pixel: int,
     torch: Any,
 ) -> list[dict[str, Any]]:
-    api = None
-    for module_name in ["gsplat", "gsplat.cuda", "gsplat.cuda._wrapper"]:
-        try:
-            module = __import__(module_name, fromlist=["rasterize_to_indices_in_range"])
-            api = getattr(module, "rasterize_to_indices_in_range", None)
-            if api is not None:
-                break
-        except Exception:
-            continue
     if api is None:
         return []
-    sig = inspect.signature(api)
-    kwargs = {}
-    aliases = {
-        "isect_offsets": ["isect_offsets"],
-        "flatten_ids": ["flatten_ids"],
-        "means2d": ["means2d"],
-        "conics": ["conics"],
-        "opacities": ["opacities"],
-        "image_width": [],
-        "image_height": [],
-        "width": [],
-        "height": [],
-    }
-    for name in sig.parameters:
-        if name in {"range_start", "start"}:
-            kwargs[name] = 0
-        elif name in {"range_end", "end"}:
-            kwargs[name] = image_width * image_height * max(1, len(selected_views))
-        elif name in {"image_width", "width"}:
-            kwargs[name] = image_width
-        elif name in {"image_height", "height"}:
-            kwargs[name] = image_height
-        else:
-            for key in aliases.get(name, [name]):
-                if key in meta:
-                    kwargs[name] = meta[key]
-                    break
-    result = api(**kwargs)
-    if not isinstance(result, (tuple, list)) or len(result) < 2:
+    tile_size = int(meta.get("tile_size", 16))
+    result = _call_rasterize_to_indices_in_range_safely(
+        api,
+        range_start=0,
+        range_end=image_width * image_height * max(1, len(selected_views)),
+        transmittances=transmittances,
+        means2d=meta["means2d"],
+        conics=meta["conics"],
+        opacities=meta["opacities"],
+        image_width=image_width,
+        image_height=image_height,
+        tile_size=tile_size,
+        isect_offsets=meta["isect_offsets"],
+        flatten_ids=meta["flatten_ids"],
+    )
+    if not isinstance(result, (tuple, list)) or len(result) < 3:
         return []
     tensors = [item.detach().cpu() if hasattr(item, "detach") else item for item in result]
     arrays = [item.numpy() if hasattr(item, "numpy") else item for item in tensors]
@@ -1057,14 +1560,109 @@ def build_pr211_exact_sparse_attribution(
     )
     exact_rows: list[dict[str, Any]] = []
     metadata_rows: list[dict[str, Any]] = []
+    contributor_api_rows: list[dict[str, Any]] = []
+    transmittance_rows: list[dict[str, Any]] = []
+    raster_output_rows: list[dict[str, Any]] = []
     missing_rows: list[dict[str, Any]] = []
+    replay_status: dict[str, Any] = {
+        "transmittance_source_selected": "",
+        "gsplat_rasterization_succeeded": False,
+        "transmittance_resolution_succeeded": False,
+        "contributor_api_dry_run_succeeded": False,
+        "rasterize_to_indices_call_succeeded": False,
+        "sparse_contributor_filter_succeeded": False,
+        "selected_pixel_hit_count": 0,
+        "selected_pixel_no_hit_count": len(selected_pixels),
+        "selected_pixel_hit_rate": 0.0,
+        "pixel_id_convention": "pixel_id = y * width + x",
+        "image_id_mapping_supported": False,
+    }
     if synthetic_exact_rows is not None:
         exact_rows = [dict(row) for row in synthetic_exact_rows]
         metadata_rows = [{"metadata_key": "synthetic_contributors", "available": "true", "type": "list", "shape": len(exact_rows), "dtype": "", "device": "cpu", "used_for": "smoke test aggregation", "notes": "local-safe synthetic exact rows"}]
+        contributor_api_rows = [
+            {
+                "api_name": "rasterize_to_indices_in_range",
+                "available": "true",
+                "signature": "synthetic",
+                "required_arguments": "range_start;range_end;transmittances;means2d;conics;opacities;image_width;image_height;tile_size;isect_offsets;flatten_ids",
+                "provided_arguments": "synthetic_exact_rows",
+                "compatible": "true",
+                "dry_run_attempted": "true",
+                "dry_run_succeeded": "true",
+                "dry_run_error": "",
+                "notes": "local-safe synthetic success path",
+            }
+        ]
+        transmittance_rows = [
+            {
+                "candidate_source": "synthetic.transmittances",
+                "available": "true",
+                "type": "list",
+                "shape": len(exact_rows),
+                "dtype": "",
+                "device": "cpu",
+                "shape_compatible": "true",
+                "dry_run_attempted": "true",
+                "dry_run_succeeded": "true",
+                "selected_as_transmittance": "true",
+                "notes": "local-safe synthetic success path",
+            }
+        ]
+        raster_output_rows = [{"output_name": "synthetic_exact_rows", "available": "true", "type": "list", "shape": len(exact_rows), "dtype": "", "device": "cpu", "notes": "local-safe synthetic success path"}]
+        selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in exact_rows if row.get("pixel_id") not in ("", None)}
+        replay_status.update(
+            {
+                "transmittance_source_selected": "synthetic.transmittances",
+                "gsplat_rasterization_succeeded": True,
+                "transmittance_resolution_succeeded": True,
+                "contributor_api_dry_run_succeeded": True,
+                "rasterize_to_indices_call_succeeded": True,
+                "sparse_contributor_filter_succeeded": bool(exact_rows),
+                "selected_pixel_hit_count": len(selected_keys),
+                "selected_pixel_no_hit_count": max(0, len(selected_pixels) - len(selected_keys)),
+                "selected_pixel_hit_rate": len(selected_keys) / len(selected_pixels) if selected_pixels else 0.0,
+                "image_id_mapping_supported": True,
+            }
+        )
     elif force_failure or blockers:
         metadata_rows = [{"metadata_key": "", "available": "false", "type": "", "shape": "", "dtype": "", "device": "", "used_for": "", "notes": "skipped due to readiness blockers"}]
+        contributor_api_rows = [
+            _api_audit_row(
+                api_name="rasterize_to_indices_in_range",
+                api=None,
+                provided_arguments=[],
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                dry_run_error="skipped",
+                notes="skipped due to readiness blockers or forced failure",
+            )
+        ]
+        transmittance_rows = [
+            _transmittance_audit_row(
+                source="unavailable",
+                value=None,
+                available=False,
+                shape_compatible=False,
+                dry_run_attempted=False,
+                dry_run_succeeded=False,
+                selected=False,
+                notes="unable to resolve valid transmittances tensor for rasterize_to_indices_in_range",
+            )
+        ]
+        raster_output_rows = [{"output_name": "", "available": "false", "type": "", "shape": "", "dtype": "", "device": "", "notes": "skipped due to readiness blockers or forced failure"}]
+        if force_failure and not blockers:
+            blockers.append(
+                _blocker(
+                    "error",
+                    "gsplat_transmittance_resolution",
+                    "unable to resolve valid transmittances tensor for rasterize_to_indices_in_range",
+                    "forced local-safe failure path",
+                    "inspect gsplat 1.5.3 API/source or use a lower-level gsplat contributor path",
+                )
+            )
     else:
-        exact_rows, metadata_rows, replay_missing, replay_blockers = _try_server_gsplat_replay(
+        replay_result = _try_server_gsplat_replay(
             run_dir=run_dir,
             selected_views=selected_views,
             selected_pixels=selected_pixels,
@@ -1072,6 +1670,14 @@ def build_pr211_exact_sparse_attribution(
             device=device,
             max_contributors_per_pixel=max_contributors_per_pixel,
         )
+        exact_rows = replay_result["exact_rows"]
+        metadata_rows = replay_result["metadata_rows"]
+        contributor_api_rows = replay_result["api_rows"]
+        transmittance_rows = replay_result["transmittance_rows"]
+        raster_output_rows = replay_result["raster_output_rows"]
+        replay_status.update(replay_result["status"])
+        replay_missing = replay_result["missing_rows"]
+        replay_blockers = replay_result["blockers"]
         missing_rows.extend(replay_missing)
         blockers.extend(replay_blockers)
     if not exact_rows and not any(row.get("component") == "gsplat_sparse_contributors" for row in blockers):
@@ -1087,6 +1693,15 @@ def build_pr211_exact_sparse_attribution(
     if exact_rows:
         blockers = [row for row in blockers if row.get("component") != "gsplat_sparse_contributors"]
     exact_succeeded = bool(exact_rows)
+    exact_succeeded = bool(
+        exact_succeeded
+        and replay_status.get("transmittance_resolution_succeeded")
+        and replay_status.get("contributor_api_dry_run_succeeded")
+        and replay_status.get("rasterize_to_indices_call_succeeded")
+        and replay_status.get("selected_pixel_hit_count", 0) > 0
+    )
+    if not exact_succeeded:
+        exact_rows = []
     evidence_quality = "exact_sparse_render_contribution" if exact_succeeded else "failed_exact_sparse_replay"
     for row in exact_rows:
         row.setdefault("scene", scene)
@@ -1141,12 +1756,22 @@ def build_pr211_exact_sparse_attribution(
         "official_cameras_json_found": cameras_json.exists(),
         "checkpoint_conversion_supported": conversion_supported,
         "camera_conversion_supported": camera_supported,
-        "gsplat_rasterization_succeeded": exact_succeeded,
+        "gsplat_rasterization_succeeded": bool(replay_status.get("gsplat_rasterization_succeeded")),
         "gsplat_metadata_available": bool(metadata_rows) and metadata_rows[0].get("available") == "true",
         "exact_contributor_ids_available": exact_succeeded,
         "exact_alpha_available": any(row.get("alpha_contribution") not in ("", None) for row in exact_rows),
         "exact_transmittance_available": any(row.get("transmittance_before") not in ("", None) for row in exact_rows),
         "exact_splat_weight_available": any(row.get("splat_weight") not in ("", None) for row in exact_rows),
+        "transmittance_source_selected": replay_status.get("transmittance_source_selected", ""),
+        "transmittance_resolution_succeeded": bool(replay_status.get("transmittance_resolution_succeeded")),
+        "contributor_api_dry_run_succeeded": bool(replay_status.get("contributor_api_dry_run_succeeded")),
+        "rasterize_to_indices_call_succeeded": bool(replay_status.get("rasterize_to_indices_call_succeeded")),
+        "sparse_contributor_filter_succeeded": bool(replay_status.get("sparse_contributor_filter_succeeded")),
+        "selected_pixel_hit_count": replay_status.get("selected_pixel_hit_count", 0),
+        "selected_pixel_no_hit_count": replay_status.get("selected_pixel_no_hit_count", len(selected_pixels)),
+        "selected_pixel_hit_rate": replay_status.get("selected_pixel_hit_rate", 0.0),
+        "pixel_id_convention": replay_status.get("pixel_id_convention", "pixel_id = y * width + x"),
+        "image_id_mapping_supported": bool(replay_status.get("image_id_mapping_supported")),
         "exact_attribution_succeeded": exact_succeeded,
         "evidence_quality": evidence_quality,
         "exact_contribution_row_count": len(exact_rows),
@@ -1171,6 +1796,9 @@ def build_pr211_exact_sparse_attribution(
     write_csv_rows(output_dir / "pr211_checkpoint_activation_audit.csv", activation_rows, ACTIVATION_FIELDS)
     write_csv_rows(output_dir / "pr211_selected_pixels.csv", selected_pixels, SELECTED_PIXEL_FIELDS)
     write_csv_rows(output_dir / "pr211_gsplat_metadata_audit.csv", metadata_rows, METADATA_FIELDS)
+    write_csv_rows(output_dir / "pr211_gsplat_contributor_api_audit.csv", contributor_api_rows, CONTRIBUTOR_API_FIELDS)
+    write_csv_rows(output_dir / "pr211_transmittance_audit.csv", transmittance_rows, TRANSMITTANCE_FIELDS)
+    write_csv_rows(output_dir / "pr211_gsplat_rasterization_output_audit.csv", raster_output_rows, RASTER_OUTPUT_FIELDS)
     write_csv_rows(output_dir / "pr211_exact_pixel_gaussian_contributions.csv", exact_rows, EXACT_FIELDS)
     write_csv_rows(output_dir / "pr211_gaussian_residual_attribution_exact.csv", gaussian_rows, GAUSSIAN_FIELDS)
     write_csv_rows(output_dir / "pr211_view_group_residual_attribution_exact.csv", group_rows, GROUP_FIELDS)

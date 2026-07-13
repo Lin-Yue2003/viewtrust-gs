@@ -144,7 +144,10 @@ PR21.1 adds `pr211_exact_sparse_attribution_smoke_test.py`, which uses fake
 PR20/PR21.0a inputs and synthetic exact contributor rows to validate exact-row
 aggregation, direct/collateral overlap, train013 selected-pixel controls,
 exact-vs-proxy comparison, failure behavior with no fabricated exact rows, and
-artifact manifests without requiring CUDA or real `gsplat`.
+artifact manifests without requiring CUDA or real `gsplat`. PR21.1a extends
+the smoke with missing-transmittance failure coverage, no-proxy-fallback
+assertions, explicit failed-replay wording checks, and a regression test that
+the safe contributor API caller always supplies `transmittances`.
 
 ## Observed Command Checks
 
@@ -251,6 +254,12 @@ PR20 and PR21.0a outputs, with installed server `gsplat`, strict selected-view
 matching, official checkpoint activation audits, gsplat metadata audits, exact
 contributor ID extraction when available, exact-vs-proxy comparison, and
 explicit blockers when exact contributor IDs cannot be retrieved
+PR21.1a transmittance resolution validation on real chair/drums PR21.1 inputs,
+with inspection of `pr211_transmittance_audit.csv`,
+`pr211_gsplat_contributor_api_audit.csv`, and
+`pr211_gsplat_rasterization_output_audit.csv` to confirm whether a valid
+transmittance source was selected and `rasterize_to_indices_in_range` was called
+with the required gsplat 1.5.3-style arguments
 ```
 
 Command:
