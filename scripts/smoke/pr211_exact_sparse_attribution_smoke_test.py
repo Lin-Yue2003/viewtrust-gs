@@ -18,6 +18,9 @@ REQUIRED_OUTPUTS = [
     "pr211_gsplat_contributor_api_audit.csv",
     "pr211_transmittance_audit.csv",
     "pr211_gsplat_rasterization_output_audit.csv",
+    "pr211_gsplat_source_audit.csv",
+    "pr211_contributor_path_decision.json",
+    "pr211_contributor_path_attempts.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
     "pr211_gaussian_residual_attribution_exact.csv",
     "pr211_view_group_residual_attribution_exact.csv",
@@ -224,6 +227,30 @@ def _synthetic_exact_rows() -> list[dict[str, object]]:
     return rows
 
 
+def _synthetic_id_only_rows() -> list[dict[str, object]]:
+    rows = []
+    for rank, gid in enumerate([100, 101], start=1):
+        rows.append(
+            {
+                "scene": "chair",
+                "condition": "corrupt_occluder",
+                "subset_name": "seed_20260710",
+                "view_name": "train_004",
+                "view_group": "direct_corrupted",
+                "pixel_x": 1,
+                "pixel_y": 1,
+                "pixel_id": 9,
+                "gaussian_id": gid,
+                "contributor_rank": rank,
+                "depth_order": rank,
+                "residual_l1": 0.5,
+                "evidence_quality": "exact_sparse_contributor_id_only",
+                "attribution_method": "gsplat_sparse_contributor_id_replay",
+            }
+        )
+    return rows
+
+
 def _assert_outputs(output_dir: Path) -> None:
     for name in REQUIRED_OUTPUTS:
         path = output_dir / name
@@ -238,6 +265,7 @@ def main() -> int:
     sys.path.insert(0, str(project_root))
     from viewtrust.analysis.gsplat_sparse_attribution import (
         _call_rasterize_to_indices_in_range_safely,
+        _extract_contributors_with_gsplat_api,
         build_pr211_exact_sparse_attribution,
     )
 
@@ -278,6 +306,9 @@ def main() -> int:
         assert summary["contributor_api_dry_run_succeeded"] is True
         assert summary["rasterize_to_indices_call_succeeded"] is True
         assert summary["selected_pixel_hit_count"] > 0
+        assert summary["source_audit_completed"] is True
+        assert summary["contributor_path_selected"] == "synthetic_exact_rows"
+        assert summary["exact_render_contribution_succeeded"] is True
         direct = list(csv.DictReader((success_dir / "pr211_direct_collateral_exact_overlap.csv").open()))
         assert direct[0]["overlap_count"] == "1"
         train = list(csv.DictReader((success_dir / "pr211_train013_exact_control.csv").open()))
@@ -286,6 +317,38 @@ def main() -> int:
         assert comparison
         manifest = list(csv.DictReader((success_dir / "artifact_manifest.csv").open()))
         assert any(row["relative_path"] == "pr211_exact_sparse_attribution_summary.json" for row in manifest)
+        decision = json.loads((success_dir / "pr211_contributor_path_decision.json").read_text(encoding="utf-8"))
+        assert decision["modifies_gsplat_or_third_party"] is False
+        assert list(csv.DictReader((success_dir / "pr211_gsplat_source_audit.csv").open()))
+        assert list(csv.DictReader((success_dir / "pr211_contributor_path_attempts.csv").open()))
+
+        id_only_dir = root / "id_only"
+        id_summary, id_code = build_pr211_exact_sparse_attribution(
+            run_dir=run_dir,
+            pr200_dir=pr200_dir,
+            pr210_dir=pr210_dir,
+            scene="chair",
+            condition="corrupt_occluder",
+            subset_name="seed_20260710",
+            iteration=700,
+            split="train",
+            views=["train_004", "train_014", "train_013"],
+            output_dir=id_only_dir,
+            device="cpu",
+            top_pixels_per_view=2,
+            max_contributors_per_pixel=2,
+            synthetic_exact_rows=_synthetic_id_only_rows(),
+        )
+        assert id_code == 0
+        _assert_outputs(id_only_dir)
+        assert id_summary["exact_attribution_succeeded"] is True
+        assert id_summary["evidence_quality"] == "exact_sparse_contributor_id_only"
+        assert id_summary["exact_contributor_id_only_succeeded"] is True
+        assert id_summary["exact_render_contribution_succeeded"] is False
+        assert id_summary["exact_alpha_available"] is False
+        assert id_summary["exact_transmittance_available"] is False
+        assert id_summary["exact_splat_weight_available"] is False
+        assert id_summary["ready_for_intervention"] is False
 
         failure_dir = root / "failure"
         failure_summary, failure_code = build_pr211_exact_sparse_attribution(
@@ -308,6 +371,8 @@ def main() -> int:
         _assert_outputs(failure_dir)
         assert failure_summary["exact_attribution_succeeded"] is False
         assert failure_summary["transmittance_resolution_succeeded"] is False
+        assert failure_summary["source_audit_completed"] is False
+        assert failure_summary["contributor_path_selected"] == "source_level_failure"
         assert failure_summary["exact_contribution_row_count"] == 0
         assert failure_summary["ready_for_intervention"] is False
         exact_rows = list(csv.DictReader((failure_dir / "pr211_exact_pixel_gaussian_contributions.csv").open()))
@@ -346,6 +411,46 @@ def main() -> int:
             flatten_ids=[1],
         )
         assert "transmittances" in recorded
+
+        def fake_compact_api(**kwargs: object) -> tuple[list[int], list[int], list[int]]:
+            assert "transmittances" in kwargs
+            return [0], [9], [0]
+
+        compact_rows = _extract_contributors_with_gsplat_api(
+            api=fake_compact_api,
+            meta={
+                "gaussian_ids": [777],
+                "means2d": [0.0],
+                "conics": [0.0],
+                "opacities": [0.9],
+                "isect_offsets": [0],
+                "flatten_ids": [0],
+                "tile_size": 16,
+            },
+            transmittances=[0.5],
+            image_width=8,
+            image_height=8,
+            selected_views=[{"requested_view_name": "train_004"}],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 9,
+                    "residual_l1": 0.5,
+                }
+            ],
+            max_contributors_per_pixel=1,
+            torch=None,
+        )
+        assert compact_rows
+        assert compact_rows[0]["gaussian_id"] == 777
+        assert compact_rows[0]["evidence_quality"] == "exact_sparse_contributor_id_only"
+        assert compact_rows[0]["_compact_gaussian_id_mapping_used"] is True
     print("pr211 exact sparse attribution smoke test ok")
     return 0
 

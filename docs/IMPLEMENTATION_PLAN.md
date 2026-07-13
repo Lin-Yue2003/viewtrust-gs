@@ -517,3 +517,13 @@ corrects failed-replay table wording so empty exact rows are not interpreted as
 real exact/proxy differences or no-overlap evidence. It remains observation-only
 and does not change training, rendering, `third_party`, or intervention
 behavior.
+
+PR21.1b adds source-guided contributor extraction. It audits installed gsplat
+source and signatures at runtime, records contributor path decisions, and tests
+source-supported squeezed / one-minus-alpha transmittance candidates before
+calling `rasterize_to_indices_in_range`. It can produce strict
+`exact_sparse_contributor_id_only` rows when pixel-level contributor IDs are
+recovered but alpha/transmittance/splat weights are unavailable. It still never
+uses PR20 proxy rows as exact evidence, keeps `ready_for_intervention = false`,
+and does not modify training, rendering, `third_party`, installed site-packages,
+or intervention behavior.

@@ -148,6 +148,11 @@ artifact manifests without requiring CUDA or real `gsplat`. PR21.1a extends
 the smoke with missing-transmittance failure coverage, no-proxy-fallback
 assertions, explicit failed-replay wording checks, and a regression test that
 the safe contributor API caller always supplies `transmittances`.
+PR21.1b extends the same smoke with source-audit/path-decision artifacts,
+source-guided contributor-ID-only evidence labeling, compact Gaussian ID
+mapping coverage through synthetic rows, no-proxy-fallback checks, and
+assertions that ID-only success does not claim alpha/transmittance/splat
+availability.
 
 ## Observed Command Checks
 
@@ -260,6 +265,12 @@ with inspection of `pr211_transmittance_audit.csv`,
 `pr211_gsplat_rasterization_output_audit.csv` to confirm whether a valid
 transmittance source was selected and `rasterize_to_indices_in_range` was called
 with the required gsplat 1.5.3-style arguments
+PR21.1b source-guided contributor extraction validation on real chair/drums
+PR21.1 inputs, with inspection of `pr211_gsplat_source_audit.csv`,
+`pr211_contributor_path_decision.json`, and
+`pr211_contributor_path_attempts.csv`, and with evidence-quality review for
+full weighted contribution vs contributor-ID-only success vs source-level
+failure
 ```
 
 Command:

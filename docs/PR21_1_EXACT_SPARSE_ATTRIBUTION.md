@@ -65,7 +65,8 @@ The server path attempts to:
 4. Run `gsplat.rasterization(..., packed=True)`.
 5. Audit returned metadata keys.
 6. Resolve a valid transmittance tensor for `rasterize_to_indices_in_range`.
-7. Use `rasterize_to_indices_in_range` when available to recover sparse
+7. Audit installed gsplat source to decide the contributor extraction path.
+8. Use `rasterize_to_indices_in_range` when available to recover sparse
    contributor IDs for selected pixels.
 
 If contributor IDs cannot be retrieved, PR21.1 writes blockers and
@@ -108,6 +109,44 @@ isect_offsets
 flatten_ids
 ```
 
+## Source-Guided Path Selection
+
+PR21.1b adds runtime source audit and path decision artifacts:
+
+```text
+pr211_gsplat_source_audit.csv
+pr211_contributor_path_decision.json
+pr211_contributor_path_attempts.csv
+```
+
+The source audit inspects installed `gsplat` modules with `inspect.unwrap`,
+records signatures for `rasterization`, `rasterize_to_indices_in_range`, and
+`accumulate`, and searches package source for terms such as `render_alphas`,
+`transmittances`, `isect_offsets`, and `flatten_ids`.
+
+Candidate paths are recorded as:
+
+```text
+Path A: public rasterize_to_indices_in_range with a validated transmittance tensor
+Path B: lower-level source-audited gsplat functions
+Path C: exact contributor IDs from tile/intersection metadata plus footprint checks
+Path D: source-level failure
+```
+
+If source evidence supports `render_alphas`, PR21.1b tests
+`rasterization_output_1.squeeze(-1)` and
+`1 - rasterization_output_1.squeeze(-1)`. A candidate is still selected only
+after dry-run validation and contributor output checks.
+
+If only pixel-level contributor IDs are recovered, PR21.1b labels rows as:
+
+```text
+evidence_quality = exact_sparse_contributor_id_only
+attribution_method = gsplat_sparse_contributor_id_replay
+```
+
+Alpha, transmittance, and splat-weight fields remain empty in that mode.
+
 ## Outputs
 
 PR21.1 writes:
@@ -121,6 +160,9 @@ pr211_gsplat_metadata_audit.csv
 pr211_gsplat_contributor_api_audit.csv
 pr211_transmittance_audit.csv
 pr211_gsplat_rasterization_output_audit.csv
+pr211_gsplat_source_audit.csv
+pr211_contributor_path_decision.json
+pr211_contributor_path_attempts.csv
 pr211_exact_pixel_gaussian_contributions.csv
 pr211_gaussian_residual_attribution_exact.csv
 pr211_view_group_residual_attribution_exact.csv
@@ -152,8 +194,11 @@ python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
 ## Interpretation
 
 If `exact_attribution_succeeded = true`, PR21.1 has recovered exact sparse
-contributors for selected pixels and the next step is PR21.2 exact-vs-proxy
-failure analysis. This still does not justify intervention.
+contributors for selected pixels. If the evidence quality is
+`exact_sparse_contributor_id_only`, the next step is PR21.2 ID-level
+exact-vs-proxy comparison. If the evidence quality is
+`exact_sparse_render_contribution`, PR21.2 may compare weighted attribution.
+Neither case justifies intervention.
 
 If `exact_attribution_succeeded = false`, inspect `pr211_blockers.csv` and
 `pr211_gsplat_metadata_audit.csv`; fix sparse contributor extraction before
