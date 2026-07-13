@@ -120,9 +120,45 @@ exact_sparse_attribution_ready = false
 
 `pr21_ready_for_exact_attribution` may be true only when the installed
 environment exposes `gsplat`, the official PLY and camera schemas look
-convertible, and public gsplat metadata/intersection APIs appear available.
-Even then, `exact_sparse_attribution_ready` remains false in PR21.0 because the
-actual sparse replay and per-pixel contributor extraction belong to PR21.1.
+convertible, selected views have strict split-aware camera matches, and public
+gsplat metadata/intersection APIs appear available. Even then,
+`exact_sparse_attribution_ready` remains false in PR21.0 because the actual
+sparse replay and per-pixel contributor extraction belong to PR21.1.
+
+## Strict Selected-View Matching
+
+PR21.0a makes selected-view matching strict and split-aware. A requested
+training view such as `train_004` must match camera metadata normalized to
+`train_004`. A camera named `test_004` is recorded only as diagnostic
+suffix-match evidence and is not valid for exact attribution.
+
+The selected-view audit includes:
+
+```text
+requested_split
+requested_prefix
+requested_index
+matched_prefix
+matched_index
+strict_match
+split_consistent
+suffix_match_only
+view_match_blocker
+valid_for_exact_attribution
+match_quality
+```
+
+If any selected view has `suffix_match_only = true` or
+`view_match_blocker = true`, then:
+
+```text
+selected_view_matching_supported = false
+pr21_ready_for_exact_attribution = false
+```
+
+`pr210_blockers.csv` records this as a `selected_view_matching` error because
+PR21.1 exact sparse attribution requires the camera pose to correspond exactly
+to the selected render/GT view.
 
 If render replay is not implemented, PR21.0 writes explicit render replay
 blockers and empty parity placeholders. It does not fake parity metrics.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import csv
 import subprocess
 import sys
 import tempfile
@@ -78,33 +79,25 @@ end_header
     path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
 
 
-def _write_fake_run(run_dir: Path) -> None:
+def _write_fake_run(run_dir: Path, *, mismatch: bool = False) -> None:
     _write_fake_ply(run_dir / "trainer_output" / "point_cloud" / "iteration_700" / "point_cloud.ply")
     (run_dir / "trainer_output" / "input.ply").write_text("ply\nformat ascii 1.0\nend_header\n", encoding="utf-8")
     (run_dir / "trainer_output" / "cfg_args").write_text("Namespace(iterations=700)\n", encoding="utf-8")
     (run_dir / "trainer_output" / "exposure.json").write_text("{}\n", encoding="utf-8")
-    cameras = [
-        {
-            "id": 4,
-            "img_name": "train_004",
-            "width": 8,
-            "height": 8,
-            "fx": 10.0,
-            "fy": 10.0,
-            "rotation": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-            "position": [0, 0, 0],
-        },
-        {
-            "id": 9,
-            "img_name": "train_009",
-            "width": 8,
-            "height": 8,
-            "fx": 10.0,
-            "fy": 10.0,
-            "rotation": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-            "position": [0, 0, 0],
-        },
-    ]
+    cameras = []
+    for index, name in [(4, "test_004" if mismatch else "train_004"), (9, "train_009")]:
+        cameras.append(
+            {
+                "id": index,
+                "img_name": name,
+                "width": 8,
+                "height": 8,
+                "fx": 10.0,
+                "fy": 10.0,
+                "rotation": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                "position": [0, 0, 0],
+            }
+        )
     (run_dir / "trainer_output" / "cameras.json").write_text(json.dumps(cameras, indent=2) + "\n", encoding="utf-8")
     render_root = run_dir / "view_evaluation" / "render_models" / "train_test_model" / "train" / "ours_700" / "renders"
     gt_root = run_dir / "view_evaluation" / "render_models" / "train_test_model" / "train" / "ours_700" / "gt"
@@ -119,46 +112,64 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
+def _probe(project_root: Path, run_dir: Path, output_dir: Path) -> subprocess.CompletedProcess[str]:
+    return _run(
+        [
+            sys.executable,
+            str(project_root / "scripts" / "measure" / "probe_pr210_gsplat_feasibility.py"),
+            "--run-dir",
+            str(run_dir),
+            "--scene",
+            "chair",
+            "--condition",
+            "corrupt_occluder",
+            "--subset-name",
+            "seed_20260710",
+            "--iteration",
+            "700",
+            "--split",
+            "train",
+            "--views",
+            "train_004",
+            "train_009",
+            "--output-dir",
+            str(output_dir),
+            "--metadata-only",
+            "--write-markdown",
+        ]
+    )
+
+
+def _assert_required_outputs(output_dir: Path) -> None:
+    for name in REQUIRED_OUTPUTS:
+        path = output_dir / name
+        assert path.exists(), name
+        assert path.stat().st_size > 0, name
+
+
+def _selected_rows(output_dir: Path) -> list[dict[str, str]]:
+    return list(csv.DictReader((output_dir / "pr210_selected_view_audit.csv").open(encoding="utf-8")))
+
+
+def _row_for(rows: list[dict[str, str]], view_name: str) -> dict[str, str]:
+    matches = [row for row in rows if row["requested_view_name"] == view_name]
+    assert matches, view_name
+    return matches[0]
+
+
 def main() -> int:
     project_root = Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix="viewtrust-pr210-") as tmp:
         root = Path(tmp)
-        run_dir = root / "fake_run"
-        output_dir = root / "pr210"
+        run_dir = root / "fake_run_positive"
+        output_dir = root / "pr210_positive"
         _write_fake_run(run_dir)
-        result = _run(
-            [
-                sys.executable,
-                str(project_root / "scripts" / "measure" / "probe_pr210_gsplat_feasibility.py"),
-                "--run-dir",
-                str(run_dir),
-                "--scene",
-                "chair",
-                "--condition",
-                "corrupt_occluder",
-                "--subset-name",
-                "seed_20260710",
-                "--iteration",
-                "700",
-                "--split",
-                "train",
-                "--views",
-                "train_004",
-                "train_009",
-                "--output-dir",
-                str(output_dir),
-                "--metadata-only",
-                "--write-markdown",
-            ]
-        )
+        result = _probe(project_root, run_dir, output_dir)
         if result.returncode != 0:
             print(result.stdout)
             print(result.stderr, file=sys.stderr)
             return result.returncode
-        for name in REQUIRED_OUTPUTS:
-            path = output_dir / name
-            assert path.exists(), name
-            assert path.stat().st_size > 0, name
+        _assert_required_outputs(output_dir)
         summary = json.loads((output_dir / "pr210_gsplat_feasibility_summary.json").read_text(encoding="utf-8"))
         assert summary["schema_name"] == "viewtrust.pr210.gsplat_feasibility.summary"
         assert summary["observation_only"] is True
@@ -175,7 +186,62 @@ def main() -> int:
         assert summary["camera_count"] == 2
         assert summary["selected_view_count_requested"] == 2
         assert summary["selected_view_count_available"] == 2
+        assert summary["selected_view_strict_match_count"] == 2
+        assert summary["selected_view_split_consistent_count"] == 2
+        assert summary["selected_view_suffix_only_mismatch_count"] == 0
+        assert summary["selected_view_blocker_count"] == 0
+        assert summary["selected_view_valid_for_exact_attribution_count"] == 2
+        assert summary["selected_view_matching_supported"] is True
         assert summary["gsplat_render_replay_supported"] is False
+        rows = _selected_rows(output_dir)
+        train004 = _row_for(rows, "train_004")
+        assert train004["matched_camera_img_name"] == "train_004"
+        assert train004["requested_split"] == "train"
+        assert train004["requested_prefix"] == "train"
+        assert train004["requested_index"] == "4"
+        assert train004["matched_prefix"] == "train"
+        assert train004["matched_index"] == "4"
+        assert train004["strict_match"] == "true"
+        assert train004["split_consistent"] == "true"
+        assert train004["suffix_match_only"] == "false"
+        assert train004["view_match_blocker"] == "false"
+        assert train004["valid_for_exact_attribution"] == "true"
+        assert train004["match_quality"] == "exact"
+
+        negative_run_dir = root / "fake_run_negative"
+        negative_output_dir = root / "pr210_negative"
+        _write_fake_run(negative_run_dir, mismatch=True)
+        negative_result = _probe(project_root, negative_run_dir, negative_output_dir)
+        if negative_result.returncode != 0:
+            print(negative_result.stdout)
+            print(negative_result.stderr, file=sys.stderr)
+            return negative_result.returncode
+        _assert_required_outputs(negative_output_dir)
+        negative_summary = json.loads((negative_output_dir / "pr210_gsplat_feasibility_summary.json").read_text(encoding="utf-8"))
+        assert negative_summary["selected_view_strict_match_count"] == 1
+        assert negative_summary["selected_view_split_consistent_count"] == 1
+        assert negative_summary["selected_view_suffix_only_mismatch_count"] == 1
+        assert negative_summary["selected_view_blocker_count"] == 1
+        assert negative_summary["selected_view_valid_for_exact_attribution_count"] == 1
+        assert negative_summary["selected_view_matching_supported"] is False
+        assert negative_summary["pr21_ready_for_exact_attribution"] is False
+        negative_rows = _selected_rows(negative_output_dir)
+        negative_train004 = _row_for(negative_rows, "train_004")
+        assert negative_train004["matched_camera_img_name"] == "test_004"
+        assert negative_train004["matched_prefix"] == "test"
+        assert negative_train004["matched_index"] == "4"
+        assert negative_train004["strict_match"] == "false"
+        assert negative_train004["split_consistent"] == "false"
+        assert negative_train004["suffix_match_only"] == "true"
+        assert negative_train004["view_match_blocker"] == "true"
+        assert negative_train004["valid_for_exact_attribution"] == "false"
+        assert negative_train004["match_quality"] == "suffix_only_mismatch"
+        recommendations = json.loads((negative_output_dir / "pr210_recommendations.json").read_text(encoding="utf-8"))
+        assert recommendations["should_proceed_to_pr21_1_exact_sparse_attribution"] is False
+        assert recommendations["recommended_next_step"] == "Fix selected-view camera matching before PR21.1 exact sparse attribution replay."
+        blockers = (negative_output_dir / "pr210_blockers.csv").read_text(encoding="utf-8")
+        assert "selected_view_matching" in blockers
+        assert "requested train_004 matched incompatible split test_004" in blockers
     print("pr210 gsplat feasibility smoke test ok")
     return 0
 

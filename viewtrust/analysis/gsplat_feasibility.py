@@ -90,9 +90,20 @@ SELECTED_VIEW_FIELDS = [
     "scene",
     "split",
     "requested_view_name",
+    "requested_split",
+    "requested_prefix",
+    "requested_index",
     "found_in_cameras_json",
     "matched_camera_id",
     "matched_camera_img_name",
+    "matched_prefix",
+    "matched_index",
+    "strict_match",
+    "split_consistent",
+    "suffix_match_only",
+    "view_match_blocker",
+    "valid_for_exact_attribution",
+    "match_quality",
     "official_render_path",
     "official_render_exists",
     "official_gt_path",
@@ -470,6 +481,24 @@ def _norm_name(value: str) -> str:
     return stem.replace("r_", "").replace("-", "_")
 
 
+def _view_prefix(value: str) -> str:
+    normalized = _norm_name(value)
+    if "_" not in normalized:
+        return ""
+    return normalized.split("_", 1)[0]
+
+
+def _normalize_view_name(value: str) -> str:
+    path = Path(value)
+    stem = _norm_name(path.name)
+    parent = path.parent.name.lower()
+    if "_" not in stem and parent in {"train", "test", "val", "target"}:
+        index = _view_index(stem)
+        if index is not None:
+            return f"{parent}_{index:03d}"
+    return stem
+
+
 def _name_matches(requested: str, candidate: str) -> bool:
     if not candidate:
         return False
@@ -480,6 +509,87 @@ def _name_matches(requested: str, candidate: str) -> bool:
     requested_index = _view_index(requested)
     candidate_index = _view_index(candidate_norm)
     return requested_index is not None and candidate_index == requested_index
+
+
+def _split_consistent(matched_prefix: str, requested_prefix: str, requested_split: str) -> bool:
+    if not matched_prefix:
+        return False
+    return matched_prefix == requested_prefix or matched_prefix == requested_split
+
+
+def _camera_match_info(camera: dict[str, Any]) -> dict[str, Any]:
+    raw_name = _camera_name(camera)
+    normalized = _normalize_view_name(raw_name)
+    return {
+        "camera": camera,
+        "raw_name": raw_name,
+        "normalized_name": normalized,
+        "prefix": _view_prefix(normalized),
+        "index": _view_index(normalized),
+    }
+
+
+def _match_camera_for_requested(cameras: list[dict[str, Any]], requested: str, split: str) -> dict[str, Any]:
+    requested_name = _normalize_view_name(requested)
+    requested_prefix = _view_prefix(requested_name)
+    requested_index = _view_index(requested_name)
+    camera_infos = [_camera_match_info(camera) for camera in cameras]
+    strict_candidates = [info for info in camera_infos if info["normalized_name"] == requested_name]
+    split_suffix_candidates = [
+        info
+        for info in camera_infos
+        if requested_index is not None
+        and info["index"] == requested_index
+        and _split_consistent(str(info["prefix"]), requested_prefix, split)
+    ]
+    suffix_candidates = [info for info in camera_infos if requested_index is not None and info["index"] == requested_index]
+
+    matched: dict[str, Any] | None = None
+    ambiguous = False
+    match_quality = "missing"
+    if len(strict_candidates) == 1:
+        matched = strict_candidates[0]
+        match_quality = "exact"
+    elif len(strict_candidates) > 1:
+        matched = strict_candidates[0]
+        ambiguous = True
+        match_quality = "ambiguous"
+    elif len(split_suffix_candidates) == 1:
+        matched = split_suffix_candidates[0]
+        match_quality = "split_aware_exact"
+    elif len(split_suffix_candidates) > 1:
+        matched = split_suffix_candidates[0]
+        ambiguous = True
+        match_quality = "ambiguous"
+    elif suffix_candidates:
+        matched = suffix_candidates[0]
+        match_quality = "suffix_only_mismatch"
+
+    matched_name = str(matched["normalized_name"]) if matched else ""
+    matched_prefix = str(matched["prefix"]) if matched else ""
+    matched_index = matched["index"] if matched else None
+    strict_match = matched_name == requested_name
+    split_consistent = _split_consistent(matched_prefix, requested_prefix, split)
+    suffix_match_only = requested_index is not None and matched_index == requested_index and not strict_match
+    if matched and not strict_match and not suffix_match_only:
+        match_quality = "invalid"
+    if not matched:
+        match_quality = "missing"
+    view_match_blocker = ambiguous or not strict_match or not split_consistent
+    return {
+        "camera": matched["camera"] if matched else None,
+        "requested_name": requested_name,
+        "requested_prefix": requested_prefix,
+        "requested_index": requested_index,
+        "matched_camera_img_name": matched_name,
+        "matched_prefix": matched_prefix,
+        "matched_index": matched_index,
+        "strict_match": strict_match,
+        "split_consistent": split_consistent,
+        "suffix_match_only": suffix_match_only,
+        "view_match_blocker": view_match_blocker,
+        "match_quality": match_quality,
+    }
 
 
 def _find_view_file(root: Path, requested: str) -> Path | None:
@@ -505,28 +615,38 @@ def match_selected_views(
     cameras = _camera_list(cameras_json)
     rows: list[dict[str, Any]] = []
     for requested in requested_views:
-        matched_camera: dict[str, Any] | None = None
-        for camera in cameras:
-            if _name_matches(requested, _camera_name(camera)):
-                matched_camera = camera
-                break
+        match = _match_camera_for_requested(cameras, requested, split)
+        matched_camera = match["camera"]
         render_path = _find_view_file(render_root, requested)
         gt_path = _find_view_file(gt_root, requested)
-        camera_name = _camera_name(matched_camera or {})
+        render_exists = render_path is not None and render_path.exists()
+        gt_exists = gt_path is not None and gt_path.exists()
+        valid_for_exact = bool(not match["view_match_blocker"] and render_exists and gt_exists)
         rows.append(
             {
                 "scene": scene,
                 "split": split,
                 "requested_view_name": requested,
+                "requested_split": split,
+                "requested_prefix": match["requested_prefix"],
+                "requested_index": match["requested_index"] if match["requested_index"] is not None else "",
                 "found_in_cameras_json": _bool_text(matched_camera is not None),
                 "matched_camera_id": (matched_camera or {}).get("id", (matched_camera or {}).get("uid", "")),
-                "matched_camera_img_name": camera_name,
+                "matched_camera_img_name": match["matched_camera_img_name"],
+                "matched_prefix": match["matched_prefix"],
+                "matched_index": match["matched_index"] if match["matched_index"] is not None else "",
+                "strict_match": _bool_text(match["strict_match"]),
+                "split_consistent": _bool_text(match["split_consistent"]),
+                "suffix_match_only": _bool_text(match["suffix_match_only"]),
+                "view_match_blocker": _bool_text(match["view_match_blocker"]),
+                "valid_for_exact_attribution": _bool_text(valid_for_exact),
+                "match_quality": match["match_quality"],
                 "official_render_path": str(render_path or ""),
-                "official_render_exists": _bool_text(render_path is not None and render_path.exists()),
+                "official_render_exists": _bool_text(render_exists),
                 "official_gt_path": str(gt_path or ""),
-                "official_gt_exists": _bool_text(gt_path is not None and gt_path.exists()),
+                "official_gt_exists": _bool_text(gt_exists),
                 "image_index": _view_index(requested) if _view_index(requested) is not None else "",
-                "notes": "" if matched_camera is not None else "requested view not matched in cameras.json",
+                "notes": "" if valid_for_exact else "strict split-aware camera/render/gt match required before PR21.1",
             }
         )
     return rows
@@ -730,15 +850,18 @@ def _blocker_rows(
                 "recommended_action": "fix PLY/camera conversion before exact attribution",
             }
         )
-    missing_views = [row.get("requested_view_name", "") for row in selected_rows if row.get("found_in_cameras_json") != "true"]
-    if missing_views:
+    view_blockers = [row for row in selected_rows if row.get("view_match_blocker") == "true"]
+    for row in view_blockers:
+        requested = str(row.get("requested_view_name", ""))
+        matched = str(row.get("matched_camera_img_name", ""))
+        blocker = f"requested {requested} matched incompatible split {matched}" if matched else f"requested {requested} has no strict split-aware camera match"
         rows.append(
             {
                 "severity": "error",
-                "component": "selected_views",
-                "blocker": "selected views not matched in cameras.json",
-                "evidence": ";".join(str(view) for view in missing_views),
-                "recommended_action": "verify view naming and camera matching",
+                "component": "selected_view_matching",
+                "blocker": blocker,
+                "evidence": f"requested={requested} matched={matched} split={row.get('requested_split', '')} match_quality={row.get('match_quality', '')}",
+                "recommended_action": "require exact split-aware camera match before PR21.1",
             }
         )
     if not metadata_api_supported:
@@ -766,12 +889,14 @@ def _blocker_rows(
 
 def _recommendations(summary: dict[str, Any]) -> dict[str, Any]:
     proceed = bool(summary.get("pr21_ready_for_exact_attribution"))
+    if not summary.get("selected_view_matching_supported", False):
+        recommended_next_step = "Fix selected-view camera matching before PR21.1 exact sparse attribution replay."
+    elif proceed:
+        recommended_next_step = "Proceed to PR21.1 exact sparse pixel-to-Gaussian attribution replay using installed gsplat."
+    else:
+        recommended_next_step = "Fix checkpoint/camera conversion or gsplat metadata API blockers before exact attribution."
     return {
-        "recommended_next_step": (
-            "Proceed to PR21.1 exact sparse pixel-to-Gaussian attribution replay using installed gsplat."
-            if proceed
-            else "Fix checkpoint/camera conversion or gsplat metadata API blockers before exact attribution."
-        ),
+        "recommended_next_step": recommended_next_step,
         "should_proceed_to_pr21_1_exact_sparse_attribution": proceed,
         "should_clone_gsplat_to_third_party": False,
         "should_modify_official_rasterizer_now": False,
@@ -824,6 +949,9 @@ def _write_report(path: Path, summary: dict[str, Any], blockers: list[dict[str, 
         "## Camera schema audit",
         f"- Camera count: `{summary.get('camera_count')}`",
         f"- Selected views available: `{summary.get('selected_view_count_available')}` / `{summary.get('selected_view_count_requested')}`",
+        f"- Strict selected-view matches: `{summary.get('selected_view_strict_match_count')}`",
+        f"- Selected-view blockers: `{summary.get('selected_view_blocker_count')}`",
+        f"- Selected-view matching supported: `{summary.get('selected_view_matching_supported')}`",
         "",
         "## gsplat API audit",
         f"- Metadata probe supported: `{summary.get('gsplat_metadata_probe_supported')}`",
@@ -924,6 +1052,12 @@ def run_gsplat_feasibility_probe(
         compare_official_renders=compare_official_renders,
     )
     metadata_supported = _metadata_api_supported(api_rows)
+    selected_strict_count = sum(1 for row in selected_rows if row.get("strict_match") == "true")
+    selected_split_consistent_count = sum(1 for row in selected_rows if row.get("split_consistent") == "true")
+    selected_suffix_only_mismatch_count = sum(1 for row in selected_rows if row.get("suffix_match_only") == "true")
+    selected_blocker_count = sum(1 for row in selected_rows if row.get("view_match_blocker") == "true")
+    selected_valid_count = sum(1 for row in selected_rows if row.get("valid_for_exact_attribution") == "true")
+    selected_matching_supported = selected_blocker_count == 0 and selected_valid_count == len(selected_views)
     blockers = _blocker_rows(
         dependency=dependency,
         artifact_row=artifact,
@@ -935,7 +1069,30 @@ def run_gsplat_feasibility_probe(
         render_replay_supported=replay_supported,
     )
     selected_available = sum(1 for row in selected_rows if row.get("found_in_cameras_json") == "true")
-    pr21_ready = bool(dependency.get("gsplat_import_ok") and ply_supported and camera_supported and conversion_supported and metadata_supported)
+    official_point_cloud_found = artifact.get("point_cloud_exists") == "true"
+    official_cameras_json_found = artifact.get("cameras_json_exists") == "true"
+    official_render_root_found = artifact.get("render_root_exists") == "true"
+    official_gt_root_found = artifact.get("gt_root_exists") == "true"
+    pr21_ready = bool(
+        dependency.get("gsplat_import_ok")
+        and official_point_cloud_found
+        and official_cameras_json_found
+        and official_render_root_found
+        and official_gt_root_found
+        and ply_supported
+        and camera_supported
+        and conversion_supported
+        and metadata_supported
+        and selected_matching_supported
+        and selected_blocker_count == 0
+        and selected_valid_count == len(selected_views)
+    )
+    if not selected_matching_supported:
+        recommended_next_step = "Fix selected-view camera matching before PR21.1 exact sparse attribution replay."
+    elif pr21_ready:
+        recommended_next_step = "Proceed to PR21.1 exact sparse pixel-to-Gaussian attribution replay using installed gsplat."
+    else:
+        recommended_next_step = "Fix checkpoint/camera conversion or gsplat metadata API blockers before exact attribution."
     summary = {
         "schema_name": "viewtrust.pr210.gsplat_feasibility.summary",
         "schema_version": 1,
@@ -961,14 +1118,20 @@ def run_gsplat_feasibility_probe(
         "torch_cuda_version": dependency.get("torch_cuda_version"),
         "cuda_available": bool(dependency.get("cuda_available")),
         "gpu_count": dependency.get("gpu_count", 0),
-        "official_point_cloud_found": artifact.get("point_cloud_exists") == "true",
-        "official_cameras_json_found": artifact.get("cameras_json_exists") == "true",
-        "official_render_root_found": artifact.get("render_root_exists") == "true",
-        "official_gt_root_found": artifact.get("gt_root_exists") == "true",
+        "official_point_cloud_found": official_point_cloud_found,
+        "official_cameras_json_found": official_cameras_json_found,
+        "official_render_root_found": official_render_root_found,
+        "official_gt_root_found": official_gt_root_found,
         "ply_vertex_count": vertex_count,
         "camera_count": camera_count,
         "selected_view_count_requested": len(selected_views),
         "selected_view_count_available": selected_available,
+        "selected_view_strict_match_count": selected_strict_count,
+        "selected_view_split_consistent_count": selected_split_consistent_count,
+        "selected_view_suffix_only_mismatch_count": selected_suffix_only_mismatch_count,
+        "selected_view_blocker_count": selected_blocker_count,
+        "selected_view_valid_for_exact_attribution_count": selected_valid_count,
+        "selected_view_matching_supported": selected_matching_supported,
         "ply_schema_supported": ply_supported,
         "camera_schema_supported": camera_supported,
         "checkpoint_conversion_supported": conversion_supported,
@@ -980,11 +1143,7 @@ def run_gsplat_feasibility_probe(
         "max_l1_to_official_render": max_l1,
         "exact_sparse_attribution_ready": False,
         "pr21_ready_for_exact_attribution": pr21_ready,
-        "recommended_next_step": (
-            "Proceed to PR21.1 exact sparse pixel-to-Gaussian attribution replay using installed gsplat."
-            if pr21_ready
-            else "Fix checkpoint/camera conversion or gsplat metadata API blockers before exact attribution."
-        ),
+        "recommended_next_step": recommended_next_step,
         "blocker_count": len(blockers),
         "warnings": [row["blocker"] for row in blockers if row.get("severity") in {"warning", "error"}],
     }

@@ -136,7 +136,10 @@ no-intervention safety fields with fake PR20.0 outputs.
 PR21.0 adds `pr210_gsplat_feasibility_smoke_test.py`, which creates a tiny fake
 official-run layout with a PLY header, `cameras.json`, and render/GT PNG files,
 then validates the gsplat feasibility output bundle without requiring CUDA,
-`torch`, or `gsplat`.
+`torch`, or `gsplat`. PR21.0a extends this smoke test with strict split-aware
+selected-view matching: `train_004` must match `train_004`, while a fake
+`test_004` suffix-only camera is recorded as a `selected_view_matching`
+blocker and cannot make PR21 ready for exact attribution.
 
 ## Observed Command Checks
 
@@ -233,6 +236,11 @@ run directories, with installed server `gsplat`, official point clouds,
 `cameras.json`, selected-view matching, PLY/camera conversion audits, gsplat API
 metadata probes, and explicit render-replay blockers or parity metrics if
 replay is later enabled
+PR21.0a selected-view audit review on real chair/drums outputs, verifying that
+`train_004` matches `train_004` rather than `test_004`, all selected views have
+`strict_match = true`, `split_consistent = true`,
+`valid_for_exact_attribution = true`, and no `selected_view_matching` blocker
+appears before PR21.1
 ```
 
 Command:

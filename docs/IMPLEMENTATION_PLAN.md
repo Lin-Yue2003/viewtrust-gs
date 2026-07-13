@@ -488,3 +488,10 @@ conversion, render-replay, blocker, recommendation, and manifest outputs. It
 does not implement exact attribution, render replay parity claims, training
 changes, rendering changes used by training, `third_party` changes, defense,
 view rejection, update suppression, or densification gating.
+
+PR21.0a tightens PR21.0 selected-view camera matching so requested train views
+must match strict split-aware camera names. Numeric suffix-only matches such as
+`train_004` to `test_004` are now recorded as `selected_view_matching` errors
+and block PR21.1 readiness. PR21.0a remains observation-only and does not add
+render replay, exact attribution, training changes, rendering changes,
+`third_party` changes, or intervention behavior.
