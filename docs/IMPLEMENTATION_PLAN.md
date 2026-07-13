@@ -495,3 +495,14 @@ must match strict split-aware camera names. Numeric suffix-only matches such as
 and block PR21.1 readiness. PR21.0a remains observation-only and does not add
 render replay, exact attribution, training changes, rendering changes,
 `third_party` changes, or intervention behavior.
+
+PR21.1 Exact Sparse Pixel-to-Gaussian Attribution Replay adds an offline
+server-only gsplat replay path that attempts to recover actual sparse
+pixel-level Gaussian contributor IDs for PR20 selected high-residual pixels. It
+uses PR21.0a strict camera matching, audits checkpoint activation assumptions,
+writes exact pixel-Gaussian rows only when contributor IDs are retrieved from
+gsplat metadata/API, and compares exact rows against PR20 proxy candidates. If
+exact IDs are unavailable, it writes blockers and does not fabricate exact
+evidence. PR21.1 remains observation-only; `ready_for_intervention` stays
+false and no training, rendering, `third_party`, defense, view rejection,
+update suppression, or densification gating behavior is changed.

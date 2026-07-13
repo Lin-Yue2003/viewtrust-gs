@@ -140,6 +140,11 @@ then validates the gsplat feasibility output bundle without requiring CUDA,
 selected-view matching: `train_004` must match `train_004`, while a fake
 `test_004` suffix-only camera is recorded as a `selected_view_matching`
 blocker and cannot make PR21 ready for exact attribution.
+PR21.1 adds `pr211_exact_sparse_attribution_smoke_test.py`, which uses fake
+PR20/PR21.0a inputs and synthetic exact contributor rows to validate exact-row
+aggregation, direct/collateral overlap, train013 selected-pixel controls,
+exact-vs-proxy comparison, failure behavior with no fabricated exact rows, and
+artifact manifests without requiring CUDA or real `gsplat`.
 
 ## Observed Command Checks
 
@@ -241,6 +246,11 @@ PR21.0a selected-view audit review on real chair/drums outputs, verifying that
 `strict_match = true`, `split_consistent = true`,
 `valid_for_exact_attribution = true`, and no `selected_view_matching` blocker
 appears before PR21.1
+PR21.1 exact sparse pixel-to-Gaussian attribution replay on real chair/drums
+PR20 and PR21.0a outputs, with installed server `gsplat`, strict selected-view
+matching, official checkpoint activation audits, gsplat metadata audits, exact
+contributor ID extraction when available, exact-vs-proxy comparison, and
+explicit blockers when exact contributor IDs cannot be retrieved
 ```
 
 Command:
