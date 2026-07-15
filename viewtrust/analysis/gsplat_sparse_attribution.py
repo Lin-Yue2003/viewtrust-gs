@@ -29,6 +29,7 @@ PR211_OUTPUT_FILES = [
     "pr211_gsplat_source_audit.csv",
     "pr211_internal_loop_shape_audit.csv",
     "pr211_internal_loop_attempts.csv",
+    "pr211_accumulation_audit.csv",
     "pr211_contributor_path_decision.json",
     "pr211_contributor_path_attempts.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
@@ -108,6 +109,18 @@ INTERNAL_LOOP_ATTEMPT_FIELDS = [
     "total_contributor_rows_before_filter",
     "selected_pixel_hit_count",
     "error",
+    "notes",
+]
+ACCUMULATION_AUDIT_FIELDS = [
+    "attempt_name",
+    "accumulation_source",
+    "attempted",
+    "succeeded",
+    "import_nerfacc_required",
+    "error",
+    "source_verified",
+    "source_file",
+    "source_line_range",
     "notes",
 ]
 PATH_ATTEMPT_FIELDS = [
@@ -506,6 +519,13 @@ def _audit_gsplat_source() -> list[dict[str, Any]]:
         "render_alphas",
         "alphas",
         "batch_per_iter",
+        "sigma",
+        "delta",
+        "conic",
+        "opacity",
+        "torch.exp",
+        "exp(",
+        "0.999",
     ]
     source_paths = sorted(seen_paths | set(package_root.rglob("*.py")))
     for path in source_paths:
@@ -1339,6 +1359,9 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
         f"- Shape validation succeeded: `{summary.get('internal_loop_shape_validation_succeeded')}`",
         f"- Rasterize-to-indices succeeded: `{summary.get('rasterize_to_indices_call_succeeded')}`",
         f"- Accumulate updated render alphas: `{summary.get('accumulate_updated_render_alphas')}`",
+        f"- Accumulation source: `{summary.get('accumulation_source_selected')}`",
+        f"- gsplat accumulate succeeded: `{summary.get('gsplat_accumulate_succeeded')}`",
+        f"- Pure torch accumulate succeeded: `{summary.get('pure_torch_accumulate_succeeded')}`",
         f"- Contributor rows before selected-pixel filtering: `{summary.get('total_contributor_rows_before_filter')}`",
         f"- Selected-pixel hit count: `{summary.get('selected_pixel_hit_count')}`",
         f"- Contributor IDs available: `{summary.get('exact_contributor_ids_available')}`",
@@ -1547,6 +1570,89 @@ def _make_exact_contributor_rows_from_indices(
     return rows, any(row.get("_compact_gaussian_id_mapping_used") for row in rows), mapping_mode
 
 
+def _source_supports_pure_torch_alpha(source_rows: list[dict[str, Any]]) -> tuple[bool, str, str]:
+    rows = [
+        row
+        for row in source_rows
+        if any(token in str(row.get("snippet", "")).lower() for token in ["sigma", "conic", "opacity", "exp", "alpha", "0.999"])
+    ]
+    text = "\n".join(str(row.get("snippet", "")).lower() for row in rows)
+    verified = "conic" in text and "opacity" in text and ("exp" in text or "torch.exp" in text)
+    paths = [str(row.get("path", "")) for row in rows if row.get("path")]
+    lines = [str(row.get("line_number", "")) for row in rows if row.get("line_number") not in ("", None)]
+    return verified, (paths[0] if paths else ""), ";".join(lines[:20])
+
+
+def _is_nerfacc_accumulate_error(error: str) -> bool:
+    lowered = error.lower()
+    return "nerfacc" in lowered or "nerfacc_cuda" in lowered or "please install nerfacc" in lowered
+
+
+def _scalar_float(value: Any) -> float:
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "item"):
+        return float(value.item())
+    return float(value)
+
+
+def _zeros_like_render_alpha(torch: Any, image_dims: tuple[int, ...], image_width: int, image_height: int, device: Any) -> Any:
+    return torch.zeros(image_dims + (image_height, image_width, 1), device=device)
+
+
+def _exp_scalar(value: float, *, torch: Any, device: Any) -> Any:
+    try:
+        tensor = torch.tensor(value, device=device)
+        return torch.exp(tensor)
+    except Exception:
+        return math.exp(value)
+
+
+def accumulate_alpha_pure_torch_for_internal_loop(
+    means2d: Any,
+    conics: Any,
+    opacities: Any,
+    gs_ids: Any,
+    pixel_ids: Any,
+    image_ids: Any,
+    image_width: int,
+    image_height: int,
+    *,
+    torch: Any,
+) -> Any:
+    image_dims = _shape_tuple(means2d)[:-2]
+    device = getattr(means2d, "device", None)
+    accs = _zeros_like_render_alpha(torch, image_dims, image_width, image_height, device)
+    gs_list = _to_int_list(gs_ids)
+    pixel_list = _to_int_list(pixel_ids)
+    image_list = _to_int_list(image_ids)
+    if not image_list:
+        image_list = [0] * len(gs_list)
+    for index, gid in enumerate(gs_list):
+        pixel_id = pixel_list[index] if index < len(pixel_list) else 0
+        image_id = image_list[index] if index < len(image_list) else 0
+        x = int(pixel_id) % int(image_width)
+        y = int(pixel_id) // int(image_width)
+        if y < 0 or y >= image_height or x < 0 or x >= image_width:
+            continue
+        mean = means2d[image_id, gid] if image_dims else means2d[gid]
+        conic = conics[image_id, gid] if image_dims else conics[gid]
+        opacity = opacities[image_id, gid] if image_dims else opacities[gid]
+        dx = float(x) + 0.5 - _scalar_float(mean[0])
+        dy = float(y) + 0.5 - _scalar_float(mean[1])
+        c0 = _scalar_float(conic[0])
+        c1 = _scalar_float(conic[1])
+        c2 = _scalar_float(conic[2])
+        sigma = 0.5 * (c0 * dx * dx + c2 * dy * dy) + c1 * dx * dy
+        if sigma < 0.0:
+            continue
+        alpha = _scalar_float(opacity) * _scalar_float(_exp_scalar(-sigma, torch=torch, device=device))
+        alpha = min(0.999, max(0.0, alpha))
+        current = accs[image_id, y, x, 0]
+        accs[image_id, y, x, 0] = current + (1.0 - current) * alpha
+    return accs
+
+
 def recover_contributors_by_gsplat_internal_loop(
     *,
     rasterize_api: Any,
@@ -1560,9 +1666,13 @@ def recover_contributors_by_gsplat_internal_loop(
     max_contributors_per_pixel: int,
     torch: Any,
     packed: bool,
+    source_rows: list[dict[str, Any]] | None = None,
     batch_per_iter: int = 100,
 ) -> dict[str, Any]:
     shape_rows: list[dict[str, Any]] = []
+    source_rows = source_rows or []
+    pure_source_verified, pure_source_file, pure_source_lines = _source_supports_pure_torch_alpha(source_rows)
+    accumulation_rows: list[dict[str, Any]] = []
     attempt_row: dict[str, Any] = {
         "attempt_name": "source_verified_internal_loop",
         "packed": _bool_text(packed),
@@ -1586,13 +1696,10 @@ def recover_contributors_by_gsplat_internal_loop(
     missing = [name for name in required if name not in meta]
     if missing:
         attempt_row["error"] = f"missing metadata: {missing}"
-        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
+        return {"rows": [], "shape_rows": shape_rows, "accumulation_rows": accumulation_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
     if rasterize_api is None:
         attempt_row["error"] = "rasterize_to_indices_in_range unavailable"
-        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
-    if accumulate_api is None:
-        attempt_row["error"] = "accumulate unavailable"
-        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
+        return {"rows": [], "shape_rows": shape_rows, "accumulation_rows": accumulation_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
 
     try:
         means2d = meta["means2d"]
@@ -1629,6 +1736,7 @@ def recover_contributors_by_gsplat_internal_loop(
                     "internal_loop_shape_validation_succeeded": False,
                     "error": attempt_row["error"],
                 },
+                "accumulation_rows": accumulation_rows,
             }
         block_size = int(meta.get("tile_size", 16)) * int(meta.get("tile_size", 16))
         n_isects = _tensor_numel(flatten_ids)
@@ -1645,6 +1753,12 @@ def recover_contributors_by_gsplat_internal_loop(
         collected_images: list[int] = []
         rasterize_call_succeeded = False
         accumulate_succeeded = False
+        gsplat_accumulate_attempted = False
+        gsplat_accumulate_succeeded = False
+        gsplat_accumulate_error = ""
+        pure_torch_accumulate_attempted = False
+        pure_torch_accumulate_succeeded = False
+        accumulation_source_selected = ""
         for step in range(0, num_batches, batch_per_iter):
             transmittances = 1.0 - render_alphas[..., 0]
             result = _call_rasterize_to_indices_in_range_safely(
@@ -1671,19 +1785,106 @@ def recover_contributors_by_gsplat_internal_loop(
             collected_gids.extend(gs_list)
             collected_pixels.extend(pixel_list)
             collected_images.extend(image_list if image_list else [0] * len(gs_list))
-            _, accs_step = accumulate_api(
-                means2d,
-                conics,
-                opacities,
-                colors_for_accumulate,
-                gs_ids,
-                pixel_ids,
-                image_ids,
-                image_width,
-                image_height,
-            )
+            accs_step = None
+            if accumulate_api is not None:
+                gsplat_accumulate_attempted = True
+                try:
+                    _, accs_step = accumulate_api(
+                        means2d,
+                        conics,
+                        opacities,
+                        colors_for_accumulate,
+                        gs_ids,
+                        pixel_ids,
+                        image_ids,
+                        image_width,
+                        image_height,
+                    )
+                    gsplat_accumulate_succeeded = True
+                    accumulation_source_selected = "gsplat_accumulate"
+                except Exception as exc:
+                    gsplat_accumulate_error = repr(exc)
+                    accumulation_rows.append(
+                        {
+                            "attempt_name": f"internal_loop_step_{step}",
+                            "accumulation_source": "gsplat_accumulate",
+                            "attempted": "true",
+                            "succeeded": "false",
+                            "import_nerfacc_required": _bool_text(_is_nerfacc_accumulate_error(gsplat_accumulate_error)),
+                            "error": gsplat_accumulate_error,
+                            "source_verified": "true",
+                            "source_file": "",
+                            "source_line_range": "",
+                            "notes": "falling back to pure torch alpha accumulation when source-verified",
+                        }
+                    )
+            if accs_step is None:
+                pure_torch_accumulate_attempted = True
+                if not pure_source_verified:
+                    attempt_row["error"] = "pure_torch_accumulate_source_unverified"
+                    break
+                try:
+                    accs_step = accumulate_alpha_pure_torch_for_internal_loop(
+                        means2d,
+                        conics,
+                        opacities,
+                        gs_ids,
+                        pixel_ids,
+                        image_ids,
+                        image_width,
+                        image_height,
+                        torch=torch,
+                    )
+                    pure_torch_accumulate_succeeded = True
+                    accumulation_source_selected = "pure_torch_alpha_accumulate"
+                    accumulation_rows.append(
+                        {
+                            "attempt_name": f"internal_loop_step_{step}",
+                            "accumulation_source": "pure_torch_alpha_accumulate",
+                            "attempted": "true",
+                            "succeeded": "true",
+                            "import_nerfacc_required": "false",
+                            "error": "",
+                            "source_verified": _bool_text(pure_source_verified),
+                            "source_file": pure_source_file,
+                            "source_line_range": pure_source_lines,
+                            "notes": "alpha-only fallback updates render_alphas; exact output remains contributor-ID-only",
+                        }
+                    )
+                except Exception as exc:
+                    attempt_row["error"] = repr(exc)
+                    accumulation_rows.append(
+                        {
+                            "attempt_name": f"internal_loop_step_{step}",
+                            "accumulation_source": "pure_torch_alpha_accumulate",
+                            "attempted": "true",
+                            "succeeded": "false",
+                            "import_nerfacc_required": "false",
+                            "error": repr(exc),
+                            "source_verified": _bool_text(pure_source_verified),
+                            "source_file": pure_source_file,
+                            "source_line_range": pure_source_lines,
+                            "notes": "pure torch alpha accumulation failed",
+                        }
+                    )
+                    break
             render_alphas = render_alphas + accs_step * transmittances[..., None]
             accumulate_succeeded = True
+        if gsplat_accumulate_attempted and gsplat_accumulate_succeeded:
+            accumulation_rows.append(
+                {
+                    "attempt_name": "internal_loop",
+                    "accumulation_source": "gsplat_accumulate",
+                    "attempted": "true",
+                    "succeeded": "true",
+                    "import_nerfacc_required": "false",
+                    "error": "",
+                    "source_verified": "true",
+                    "source_file": "",
+                    "source_line_range": "",
+                    "notes": "gsplat accumulate completed without fallback",
+                }
+            )
         rows, compact_used, mapping_mode = _make_exact_contributor_rows_from_indices(
             gaussian_ids=collected_gids,
             pixel_ids=collected_pixels,
@@ -1695,16 +1896,23 @@ def recover_contributors_by_gsplat_internal_loop(
             max_contributors_per_pixel=max_contributors_per_pixel,
             attribution_method="gsplat_internal_loop_contributor_id_replay",
         )
+        if not packed:
+            mapping_mode = "unpacked_direct_gaussian_index"
+            compact_used = False
         selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in selected_pixels}
         hit_keys = {(row["view_name"], int(row["pixel_id"])) for row in rows}
         attempt_row["total_contributor_rows_before_filter"] = len(collected_gids)
         attempt_row["selected_pixel_hit_count"] = len(hit_keys)
-        attempt_row["succeeded"] = _bool_text(bool(rows))
+        attempt_row["succeeded"] = _bool_text(bool(rows) and accumulate_succeeded)
         if not rows:
             attempt_row["error"] = "selected_pixel_filtering_failed" if collected_gids else "internal loop returned no contributors"
+        if not accumulate_succeeded and not attempt_row["error"]:
+            attempt_row["error"] = "pure_torch_accumulate_failed" if pure_torch_accumulate_attempted else "gsplat_accumulate_failed"
+            rows = []
         return {
             "rows": rows,
             "shape_rows": shape_rows,
+            "accumulation_rows": accumulation_rows,
             "attempt_row": attempt_row,
             "status": {
                 "internal_loop_shape_validation_succeeded": True,
@@ -1715,6 +1923,13 @@ def recover_contributors_by_gsplat_internal_loop(
                 "selected_pixel_hit_rate": len(hit_keys) / len(selected_keys) if selected_keys else 0.0,
                 "rasterize_to_indices_call_succeeded": rasterize_call_succeeded,
                 "accumulate_succeeded": accumulate_succeeded,
+                "accumulation_source_selected": accumulation_source_selected,
+                "gsplat_accumulate_attempted": gsplat_accumulate_attempted,
+                "gsplat_accumulate_succeeded": gsplat_accumulate_succeeded,
+                "gsplat_accumulate_error": gsplat_accumulate_error,
+                "pure_torch_accumulate_attempted": pure_torch_accumulate_attempted,
+                "pure_torch_accumulate_succeeded": pure_torch_accumulate_succeeded,
+                "pure_torch_accumulate_source_verified": pure_source_verified,
                 "compact_gaussian_id_mapping_used": compact_used,
                 "gaussian_id_mapping_mode": mapping_mode,
                 "error": attempt_row["error"],
@@ -1722,7 +1937,7 @@ def recover_contributors_by_gsplat_internal_loop(
         }
     except Exception as exc:
         attempt_row["error"] = repr(exc)
-        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": repr(exc)}}
+        return {"rows": [], "shape_rows": shape_rows, "accumulation_rows": accumulation_rows, "attempt_row": attempt_row, "status": {"error": repr(exc)}}
 
 
 def _try_server_gsplat_replay(
@@ -1744,6 +1959,7 @@ def _try_server_gsplat_replay(
     source_rows = _audit_gsplat_source()
     internal_loop_shape_rows: list[dict[str, Any]] = []
     internal_loop_attempt_rows: list[dict[str, Any]] = []
+    accumulation_rows: list[dict[str, Any]] = []
     path_attempt_rows: list[dict[str, Any]] = []
     status: dict[str, Any] = {
         "transmittance_source_selected": "",
@@ -1768,6 +1984,13 @@ def _try_server_gsplat_replay(
         "internal_loop_batch_per_iter": 100,
         "internal_loop_num_batches": 0,
         "accumulate_updated_render_alphas": False,
+        "accumulation_source_selected": "",
+        "gsplat_accumulate_attempted": False,
+        "gsplat_accumulate_succeeded": False,
+        "gsplat_accumulate_error": "",
+        "pure_torch_accumulate_attempted": False,
+        "pure_torch_accumulate_succeeded": False,
+        "pure_torch_accumulate_source_verified": False,
         "total_contributor_rows_before_filter": 0,
         "sparse_contributor_filter_succeeded": False,
         "selected_pixel_hit_count": 0,
@@ -1795,6 +2018,7 @@ def _try_server_gsplat_replay(
             "source_rows": source_rows,
             "internal_loop_shape_rows": internal_loop_shape_rows,
             "internal_loop_attempt_rows": internal_loop_attempt_rows,
+            "accumulation_rows": accumulation_rows,
             "path_attempt_rows": path_attempt_rows,
             "status": status,
         }
@@ -1857,16 +2081,6 @@ def _try_server_gsplat_replay(
         status["contributor_api_dry_run_succeeded"] = trans_ok
         status["contributor_path_selected"] = "path_a_public_rasterize_to_indices_in_range" if trans_ok else "source_level_failure"
         status["contributor_path_reason"] = f"selected transmittance source {source}" if trans_ok else trans_error
-        if not trans_ok:
-            blockers.append(
-                _blocker(
-                    "error",
-                    "gsplat_transmittance_resolution",
-                    "unable to resolve valid transmittances tensor for rasterize_to_indices_in_range",
-                    f"metadata_keys={sorted(meta.keys())}; raster_outputs={[row.get('shape', '') for row in raster_output_rows]}; error={trans_error}",
-                    "inspect gsplat 1.5.3 API/source or use a lower-level gsplat contributor path",
-                )
-            )
         path_attempt_rows.append(
             {
                 "path_name": "path_a_public_rasterize_to_indices_in_range",
@@ -1967,17 +2181,43 @@ def _try_server_gsplat_replay(
                 max_contributors_per_pixel=max_contributors_per_pixel,
                 torch=torch,
                 packed=packed,
+                source_rows=source_rows,
                 batch_per_iter=int(status["internal_loop_batch_per_iter"]),
             )
             attempt_row = dict(result["attempt_row"])
             attempt_row["attempt_name"] = attempt_name
             internal_loop_attempt_rows.append(attempt_row)
             internal_loop_shape_rows.extend(result["shape_rows"])
+            accumulation_rows.extend(result.get("accumulation_rows", []))
             attempt_status = result["status"]
             status["internal_loop_replay_attempted"] = True
             internal_error = str(attempt_status.get("error", ""))
             if attempt_status.get("internal_loop_shape_validation_succeeded"):
                 status["internal_loop_shape_validation_succeeded"] = True
+            for key in [
+                "accumulation_source_selected",
+                "gsplat_accumulate_error",
+                "gaussian_id_mapping_mode",
+            ]:
+                if attempt_status.get(key) not in ("", None):
+                    status[key] = attempt_status.get(key)
+            for key in [
+                "gsplat_accumulate_attempted",
+                "gsplat_accumulate_succeeded",
+                "pure_torch_accumulate_attempted",
+                "pure_torch_accumulate_succeeded",
+                "pure_torch_accumulate_source_verified",
+            ]:
+                status[key] = bool(status.get(key)) or bool(attempt_status.get(key))
+            if attempt_status.get("total_contributor_rows_before_filter", 0):
+                status["total_contributor_rows_before_filter"] = attempt_status.get("total_contributor_rows_before_filter", 0)
+                status["selected_pixel_hit_count"] = attempt_status.get("selected_pixel_hit_count", 0)
+                status["selected_pixel_no_hit_count"] = attempt_status.get("selected_pixel_no_hit_count", len(selected_pixels))
+                status["selected_pixel_hit_rate"] = attempt_status.get("selected_pixel_hit_rate", 0.0)
+            if attempt_status.get("internal_loop_num_batches", 0):
+                status["internal_loop_num_batches"] = attempt_status.get("internal_loop_num_batches", 0)
+            if attempt_status.get("rasterize_to_indices_call_succeeded"):
+                status["rasterize_to_indices_call_succeeded"] = True
             if attempt_row.get("succeeded") == "true":
                 exact_rows.extend(result["rows"])
                 status["contributor_path_selected"] = "source_verified_internal_loop"
@@ -1991,6 +2231,13 @@ def _try_server_gsplat_replay(
                 status["selected_pixel_hit_rate"] = attempt_status.get("selected_pixel_hit_rate", 0.0)
                 status["rasterize_to_indices_call_succeeded"] = bool(attempt_status.get("rasterize_to_indices_call_succeeded"))
                 status["accumulate_updated_render_alphas"] = bool(attempt_status.get("accumulate_succeeded"))
+                status["accumulation_source_selected"] = attempt_status.get("accumulation_source_selected", "")
+                status["gsplat_accumulate_attempted"] = bool(attempt_status.get("gsplat_accumulate_attempted"))
+                status["gsplat_accumulate_succeeded"] = bool(attempt_status.get("gsplat_accumulate_succeeded"))
+                status["gsplat_accumulate_error"] = attempt_status.get("gsplat_accumulate_error", "")
+                status["pure_torch_accumulate_attempted"] = bool(attempt_status.get("pure_torch_accumulate_attempted"))
+                status["pure_torch_accumulate_succeeded"] = bool(attempt_status.get("pure_torch_accumulate_succeeded"))
+                status["pure_torch_accumulate_source_verified"] = bool(attempt_status.get("pure_torch_accumulate_source_verified"))
                 status["rasterize_output_tuple_interpretation"] = "gaussian_ids;pixel_ids;image_ids"
                 status["compact_gaussian_id_mapping_used"] = bool(attempt_status.get("compact_gaussian_id_mapping_used"))
                 status["gaussian_id_mapping_mode"] = attempt_status.get("gaussian_id_mapping_mode", "direct gaussian ids")
@@ -2053,13 +2300,28 @@ def _try_server_gsplat_replay(
                 path_attempt_rows[0]["exact_row_count"] = len(exact_rows)
                 path_attempt_rows[0]["error"] = ""
         if not exact_rows:
+            component = "gsplat_sparse_contributors"
+            blocker = "source-verified internal loop did not recover selected-pixel contributor IDs"
+            action = "inspect pr211_internal_loop_shape_audit.csv and pr211_internal_loop_attempts.csv"
+            if internal_error == "selected_pixel_filtering_failed":
+                component = "selected_pixel_filtering"
+                blocker = "internal loop produced contributors but no PR20 selected pixels matched"
+                action = "inspect selected pixel IDs, view ordering, and pixel_id = y * width + x convention"
+            elif "pure_torch_accumulate" in internal_error:
+                component = "pure_torch_accumulate_failed"
+                blocker = "pure torch alpha accumulation failed or was not source-verified"
+                action = "inspect pr211_accumulation_audit.csv and gsplat source audit formula rows"
+            elif "accumulate" in internal_error:
+                component = "nerfacc_accumulate_failed"
+                blocker = "gsplat accumulate failed before pure torch fallback recovered alpha state"
+                action = "inspect pr211_accumulation_audit.csv"
             blockers.append(
                 _blocker(
                     "error",
-                    "gsplat_sparse_contributors",
-                    "source-verified internal loop did not recover selected-pixel contributor IDs",
+                    component,
+                    blocker,
                     f"packed_false_attempted=true; packed_true_attempted=true; internal_error={internal_error}",
-                    "inspect pr211_internal_loop_shape_audit.csv and pr211_internal_loop_attempts.csv",
+                    action,
                 )
             )
     except Exception as exc:
@@ -2105,6 +2367,7 @@ def _try_server_gsplat_replay(
         "source_rows": source_rows,
         "internal_loop_shape_rows": internal_loop_shape_rows,
         "internal_loop_attempt_rows": internal_loop_attempt_rows,
+        "accumulation_rows": accumulation_rows,
         "path_attempt_rows": path_attempt_rows,
         "status": status,
     }
@@ -2341,6 +2604,7 @@ def build_pr211_exact_sparse_attribution(
     source_rows: list[dict[str, Any]] = [{"item": "local-safe", "path": "", "line_number": "", "symbol": "", "signature": "", "snippet": "", "notes": "source audit requires installed gsplat"}]
     internal_loop_shape_rows: list[dict[str, Any]] = []
     internal_loop_attempt_rows: list[dict[str, Any]] = []
+    accumulation_rows: list[dict[str, Any]] = []
     path_attempt_rows: list[dict[str, Any]] = []
     missing_rows: list[dict[str, Any]] = []
     replay_status: dict[str, Any] = {
@@ -2366,6 +2630,13 @@ def build_pr211_exact_sparse_attribution(
         "internal_loop_batch_per_iter": 100,
         "internal_loop_num_batches": 0,
         "accumulate_updated_render_alphas": False,
+        "accumulation_source_selected": "",
+        "gsplat_accumulate_attempted": False,
+        "gsplat_accumulate_succeeded": False,
+        "gsplat_accumulate_error": "",
+        "pure_torch_accumulate_attempted": False,
+        "pure_torch_accumulate_succeeded": False,
+        "pure_torch_accumulate_source_verified": False,
         "total_contributor_rows_before_filter": 0,
         "sparse_contributor_filter_succeeded": False,
         "selected_pixel_hit_count": 0,
@@ -2443,6 +2714,20 @@ def build_pr211_exact_sparse_attribution(
                 "notes": "local-safe synthetic path",
             }
         ]
+        accumulation_rows = [
+            {
+                "attempt_name": "synthetic_exact_rows",
+                "accumulation_source": "synthetic",
+                "attempted": "false",
+                "succeeded": "true",
+                "import_nerfacc_required": "false",
+                "error": "",
+                "source_verified": "true",
+                "source_file": "",
+                "source_line_range": "",
+                "notes": "local-safe synthetic exact rows",
+            }
+        ]
         replay_status.update(
             {
                 "transmittance_source_selected": "synthetic.transmittances",
@@ -2457,6 +2742,7 @@ def build_pr211_exact_sparse_attribution(
                 "rasterize_to_indices_call_succeeded": True,
                 "rasterize_output_tuple_interpretation": "synthetic",
                 "gaussian_id_mapping_mode": "direct gaussian ids",
+                "accumulation_source_selected": "synthetic",
                 "sparse_contributor_filter_succeeded": bool(exact_rows),
                 "selected_pixel_hit_count": len(selected_keys),
                 "selected_pixel_no_hit_count": max(0, len(selected_pixels) - len(selected_keys)),
@@ -2542,6 +2828,20 @@ def build_pr211_exact_sparse_attribution(
                 "notes": "forced or readiness failure path",
             }
         ]
+        accumulation_rows = [
+            {
+                "attempt_name": "source_verified_internal_loop",
+                "accumulation_source": "",
+                "attempted": "false",
+                "succeeded": "false",
+                "import_nerfacc_required": "false",
+                "error": "skipped",
+                "source_verified": "false",
+                "source_file": "",
+                "source_line_range": "",
+                "notes": "forced or readiness failure path",
+            }
+        ]
         path_attempt_rows = [
             {
                 "path_name": "source_level_failure",
@@ -2587,6 +2887,7 @@ def build_pr211_exact_sparse_attribution(
         source_rows = replay_result["source_rows"]
         internal_loop_shape_rows = replay_result["internal_loop_shape_rows"]
         internal_loop_attempt_rows = replay_result["internal_loop_attempt_rows"]
+        accumulation_rows = replay_result["accumulation_rows"]
         path_attempt_rows = replay_result["path_attempt_rows"]
         replay_status.update(replay_result["status"])
         replay_missing = replay_result["missing_rows"]
@@ -2706,6 +3007,13 @@ def build_pr211_exact_sparse_attribution(
         "internal_loop_batch_per_iter": replay_status.get("internal_loop_batch_per_iter", 100),
         "internal_loop_num_batches": replay_status.get("internal_loop_num_batches", 0),
         "accumulate_updated_render_alphas": bool(replay_status.get("accumulate_updated_render_alphas")),
+        "accumulation_source_selected": replay_status.get("accumulation_source_selected", ""),
+        "gsplat_accumulate_attempted": bool(replay_status.get("gsplat_accumulate_attempted")),
+        "gsplat_accumulate_succeeded": bool(replay_status.get("gsplat_accumulate_succeeded")),
+        "gsplat_accumulate_error": replay_status.get("gsplat_accumulate_error", ""),
+        "pure_torch_accumulate_attempted": bool(replay_status.get("pure_torch_accumulate_attempted")),
+        "pure_torch_accumulate_succeeded": bool(replay_status.get("pure_torch_accumulate_succeeded")),
+        "pure_torch_accumulate_source_verified": bool(replay_status.get("pure_torch_accumulate_source_verified")),
         "total_contributor_rows_before_filter": replay_status.get("total_contributor_rows_before_filter", 0),
         "sparse_contributor_filter_succeeded": bool(replay_status.get("sparse_contributor_filter_succeeded")),
         "selected_pixel_hit_count": replay_status.get("selected_pixel_hit_count", 0),
@@ -2748,6 +3056,7 @@ def build_pr211_exact_sparse_attribution(
     write_csv_rows(output_dir / "pr211_gsplat_source_audit.csv", source_rows, SOURCE_AUDIT_FIELDS)
     write_csv_rows(output_dir / "pr211_internal_loop_shape_audit.csv", internal_loop_shape_rows, INTERNAL_LOOP_SHAPE_FIELDS)
     write_csv_rows(output_dir / "pr211_internal_loop_attempts.csv", internal_loop_attempt_rows, INTERNAL_LOOP_ATTEMPT_FIELDS)
+    write_csv_rows(output_dir / "pr211_accumulation_audit.csv", accumulation_rows, ACCUMULATION_AUDIT_FIELDS)
     write_json(output_dir / "pr211_contributor_path_decision.json", contributor_decision)
     write_csv_rows(output_dir / "pr211_contributor_path_attempts.csv", path_attempt_rows, PATH_ATTEMPT_FIELDS)
     write_csv_rows(output_dir / "pr211_exact_pixel_gaussian_contributions.csv", exact_rows, EXACT_FIELDS)

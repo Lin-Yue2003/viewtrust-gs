@@ -539,3 +539,13 @@ successful rows as `exact_sparse_contributor_id_only` with
 not claim weighted alpha/transmittance/splat semantics, does not use proxy rows
 as exact evidence, and remains observation-only with no training, rendering,
 `third_party`, installed site-packages, defense, or intervention changes.
+
+PR21.1d removes the nerfacc dependency from the internal-loop contributor-ID
+path. If `gsplat.accumulate` fails because `nerfacc_cuda` cannot build or
+import, the offline replay uses a source-verified pure-torch alpha-only update
+to maintain `render_alphas` and the next-batch transmittance state. Contributor
+IDs are collected before accumulation, but success still requires a valid alpha
+state update and selected-pixel hits. Outputs remain
+`exact_sparse_contributor_id_only`; PR21.1d does not claim exact weighted render
+contribution and does not modify training, rendering, `third_party`, installed
+gsplat, installed nerfacc, defense, or intervention behavior.

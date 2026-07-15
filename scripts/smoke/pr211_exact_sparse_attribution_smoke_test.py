@@ -21,6 +21,7 @@ REQUIRED_OUTPUTS = [
     "pr211_gsplat_source_audit.csv",
     "pr211_internal_loop_shape_audit.csv",
     "pr211_internal_loop_attempts.csv",
+    "pr211_accumulation_audit.csv",
     "pr211_contributor_path_decision.json",
     "pr211_contributor_path_attempts.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
@@ -472,6 +473,10 @@ def main() -> int:
             def cat(values: list[np.ndarray]) -> np.ndarray:
                 return np.concatenate(values)
 
+            @staticmethod
+            def exp(value: object) -> object:
+                return np.exp(value)
+
         internal_meta = {
             "means2d": np.zeros((2, 3, 2), dtype=np.float32),
             "conics": np.zeros((2, 3, 3), dtype=np.float32),
@@ -481,14 +486,34 @@ def main() -> int:
             "tile_size": 1,
         }
         colors = np.ones((2, 3, 3), dtype=np.float32)
-        loop_calls: list[tuple[int, tuple[int, ...]]] = []
+        source_rows = [
+            {
+                "item": "pattern:alpha",
+                "path": "/fake/gsplat/cuda/_torch_impl.py",
+                "line_number": 123,
+                "symbol": "",
+                "signature": "",
+                "snippet": "alpha = torch.clamp(opacity * torch.exp(-sigma), max=0.999)",
+                "notes": "source grep",
+            },
+            {
+                "item": "pattern:conic",
+                "path": "/fake/gsplat/cuda/_torch_impl.py",
+                "line_number": 122,
+                "symbol": "",
+                "signature": "",
+                "snippet": "sigma = 0.5 * (conic[0] * delta_x * delta_x + conic[2] * delta_y * delta_y) + conic[1] * delta_x * delta_y",
+                "notes": "source grep",
+            },
+        ]
+        loop_calls: list[tuple[int, tuple[int, ...], float]] = []
         accumulate_calls = {"count": 0}
 
         def fake_internal_rasterize(**kwargs: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
             transmittances = kwargs["transmittances"]
             assert getattr(transmittances, "shape", None) == (2, 4, 4)
             step = int(kwargs["range_start"])
-            loop_calls.append((step, tuple(transmittances.shape)))
+            loop_calls.append((step, tuple(transmittances.shape), float(transmittances[0, 1, 1])))
             if step > 0:
                 return np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)
             return np.array([1, 2], dtype=np.int64), np.array([5, 5], dtype=np.int64), np.array([0, 0], dtype=np.int64)
@@ -524,9 +549,13 @@ def main() -> int:
             max_contributors_per_pixel=2,
             torch=NumpyTorch,
             packed=False,
+            source_rows=source_rows,
             batch_per_iter=1,
         )
         assert loop_calls
+        assert len(loop_calls) >= 2
+        assert loop_calls[0][2] == 1.0
+        assert loop_calls[1][2] < 1.0
         assert accumulate_calls["count"] == 1
         assert internal_result["attempt_row"]["succeeded"] == "true"
         assert internal_result["status"]["internal_loop_shape_validation_succeeded"] is True
@@ -534,7 +563,7 @@ def main() -> int:
         assert internal_result["status"]["accumulate_succeeded"] is True
         assert internal_result["status"]["total_contributor_rows_before_filter"] == 2
         assert internal_result["status"]["selected_pixel_hit_count"] == 1
-        assert internal_result["status"]["gaussian_id_mapping_mode"] == "direct gaussian ids"
+        assert internal_result["status"]["gaussian_id_mapping_mode"] == "unpacked_direct_gaussian_index"
         assert len(internal_result["rows"]) == 2
         assert internal_result["rows"][0]["evidence_quality"] == "exact_sparse_contributor_id_only"
         assert internal_result["rows"][0]["attribution_method"] == "gsplat_internal_loop_contributor_id_replay"
@@ -554,6 +583,7 @@ def main() -> int:
             max_contributors_per_pixel=2,
             torch=NumpyTorch,
             packed=False,
+            source_rows=source_rows,
             batch_per_iter=1,
         )
         assert not bad_shape["rows"]
@@ -588,11 +618,71 @@ def main() -> int:
             max_contributors_per_pixel=2,
             torch=NumpyTorch,
             packed=False,
+            source_rows=source_rows,
             batch_per_iter=1,
         )
         assert not zero_hit["rows"]
         assert zero_hit["attempt_row"]["total_contributor_rows_before_filter"] == 1
         assert zero_hit["attempt_row"]["error"] == "selected_pixel_filtering_failed"
+
+        fallback_calls: list[tuple[int, float]] = []
+
+        def fake_nerfacc_accumulate(*args: object) -> tuple[np.ndarray, np.ndarray]:
+            del args
+            raise RuntimeError("Error building extension 'nerfacc_cuda': Please install nerfacc")
+
+        def fake_fallback_rasterize(**kwargs: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            step = int(kwargs["range_start"])
+            transmittances = kwargs["transmittances"]
+            fallback_calls.append((step, float(transmittances[0, 1, 1])))
+            if step > 0:
+                assert float(transmittances[0, 1, 1]) < 1.0
+                return np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+            return np.array([1], dtype=np.int64), np.array([5], dtype=np.int64), np.array([0], dtype=np.int64)
+
+        fallback_result = recover_contributors_by_gsplat_internal_loop(
+            rasterize_api=fake_fallback_rasterize,
+            accumulate_api=fake_nerfacc_accumulate,
+            meta=internal_meta,
+            colors=colors,
+            image_width=4,
+            image_height=4,
+            selected_views=[{"requested_view_name": "train_004"}],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 5,
+                    "residual_l1": 0.5,
+                }
+            ],
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            packed=False,
+            source_rows=source_rows,
+            batch_per_iter=1,
+        )
+        assert fallback_result["attempt_row"]["succeeded"] == "true"
+        assert fallback_result["status"]["gsplat_accumulate_attempted"] is True
+        assert fallback_result["status"]["gsplat_accumulate_succeeded"] is False
+        assert "nerfacc_cuda" in fallback_result["status"]["gsplat_accumulate_error"]
+        assert fallback_result["status"]["pure_torch_accumulate_attempted"] is True
+        assert fallback_result["status"]["pure_torch_accumulate_succeeded"] is True
+        assert fallback_result["status"]["pure_torch_accumulate_source_verified"] is True
+        assert fallback_result["status"]["accumulation_source_selected"] == "pure_torch_alpha_accumulate"
+        assert fallback_result["rows"]
+        assert fallback_result["rows"][0]["evidence_quality"] == "exact_sparse_contributor_id_only"
+        assert fallback_result["rows"][0]["splat_weight"] == ""
+        assert fallback_calls[0][1] == 1.0
+        assert fallback_calls[1][1] < 1.0
+        accumulation_audit = fallback_result["accumulation_rows"]
+        assert any(row["accumulation_source"] == "gsplat_accumulate" and row["succeeded"] == "false" for row in accumulation_audit)
+        assert any(row["accumulation_source"] == "pure_torch_alpha_accumulate" and row["succeeded"] == "true" for row in accumulation_audit)
     print("pr211 exact sparse attribution smoke test ok")
     return 0
 

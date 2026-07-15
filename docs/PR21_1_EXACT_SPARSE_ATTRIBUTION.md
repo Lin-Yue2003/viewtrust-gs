@@ -175,9 +175,27 @@ render_alphas: image_dims + (H, W, 1)
 transmittance: image_dims + (H, W)
 ```
 
+PR21.1d removes the dependency on nerfacc for this ID-only path. The replay
+collects contributor IDs immediately after `rasterize_to_indices_in_range`.
+It first tries `gsplat.accumulate`; if that fails because `nerfacc_cuda` cannot
+build or import, it falls back to a local source-verified alpha-only update that
+uses the minimal gsplat formula:
+
+```text
+x = pixel_id % image_width
+y = pixel_id // image_width
+sigma = 0.5 * (c0 * dx * dx + c2 * dy * dy) + c1 * dx * dy
+alpha = min(0.999, opacity * exp(-sigma))
+acc_alpha = acc_alpha + (1 - acc_alpha) * alpha
+```
+
+The fallback updates `render_alphas` only to keep the internal loop's
+transmittance state valid. It does not claim exact alpha, transmittance, splat
+weight, color, or residual-weighted contribution values.
+
 If `packed=False` is unavailable or fails, the replay records a source-validated
 packed attempt only if the shapes can be audited. It does not use proxy rows as
-exact evidence. Successful PR21.1c rows are intentionally ID-only:
+exact evidence. Successful PR21.1c/PR21.1d rows are intentionally ID-only:
 
 ```text
 evidence_quality = exact_sparse_contributor_id_only
@@ -204,6 +222,7 @@ pr211_gsplat_rasterization_output_audit.csv
 pr211_gsplat_source_audit.csv
 pr211_internal_loop_shape_audit.csv
 pr211_internal_loop_attempts.csv
+pr211_accumulation_audit.csv
 pr211_contributor_path_decision.json
 pr211_contributor_path_attempts.csv
 pr211_exact_pixel_gaussian_contributions.csv

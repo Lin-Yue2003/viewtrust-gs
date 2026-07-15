@@ -158,6 +158,11 @@ fake rasterizer checks `transmittances` shape `(C, H, W)`, fake `accumulate`
 updates `render_alphas`, selected-pixel filtering recovers ID-only rows, shape
 mismatch fails cleanly, zero selected-pixel hits fail cleanly, and proxy rows
 are still never promoted to exact evidence.
+PR21.1d extends the same smoke with a nerfacc failure fallback: fake
+`gsplat.accumulate` raises a `nerfacc_cuda` build error, pure-torch alpha
+accumulation updates `render_alphas`, the next internal-loop batch observes
+`1.0 - render_alphas[..., 0]`, and recovered rows remain ID-only with no exact
+alpha/transmittance/splat-weight claims.
 
 ## Observed Command Checks
 
@@ -283,6 +288,11 @@ inputs, with inspection of `pr211_internal_loop_shape_audit.csv`,
 `total_contributor_rows_before_filter`, `selected_pixel_hit_count`, and
 `accumulate_updated_render_alphas`. Successful PR21.1c output should be treated
 as ID-only unless alpha/transmittance/splat weights are separately verified.
+PR21.1d validation adds inspection of `pr211_accumulation_audit.csv` and summary
+fields `accumulation_source_selected`, `gsplat_accumulate_*`, and
+`pure_torch_accumulate_*`. A nerfacc build failure may be present in the audit
+without blocking contributor-ID recovery if source-verified pure-torch alpha
+accumulation succeeds.
 ```
 
 Command:
