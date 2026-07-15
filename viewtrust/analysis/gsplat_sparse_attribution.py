@@ -27,6 +27,8 @@ PR211_OUTPUT_FILES = [
     "pr211_transmittance_audit.csv",
     "pr211_gsplat_rasterization_output_audit.csv",
     "pr211_gsplat_source_audit.csv",
+    "pr211_internal_loop_shape_audit.csv",
+    "pr211_internal_loop_attempts.csv",
     "pr211_contributor_path_decision.json",
     "pr211_contributor_path_attempts.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
@@ -88,6 +90,26 @@ TRANSMITTANCE_FIELDS = [
 ]
 RASTER_OUTPUT_FIELDS = ["output_name", "available", "type", "shape", "dtype", "device", "notes"]
 SOURCE_AUDIT_FIELDS = ["item", "path", "line_number", "symbol", "signature", "snippet", "notes"]
+INTERNAL_LOOP_SHAPE_FIELDS = ["tensor_name", "expected_shape", "actual_shape", "dtype", "device", "shape_ok", "notes"]
+INTERNAL_LOOP_ATTEMPT_FIELDS = [
+    "attempt_name",
+    "packed",
+    "attempted",
+    "succeeded",
+    "means2d_shape",
+    "conics_shape",
+    "opacities_shape",
+    "colors_shape",
+    "isect_offsets_shape",
+    "flatten_ids_shape",
+    "render_alphas_shape",
+    "transmittances_shape",
+    "num_batches",
+    "total_contributor_rows_before_filter",
+    "selected_pixel_hit_count",
+    "error",
+    "notes",
+]
 PATH_ATTEMPT_FIELDS = [
     "path_name",
     "attempted",
@@ -532,8 +554,9 @@ def _contributor_path_decision(
     ]
     attempted_names = {str(row.get("path_name", "")) for row in path_attempts}
     for path_name, reason in [
-        ("path_b_lower_level_private_api", "not selected; no source-audited lower-level contributor path was required for this run"),
-        ("path_c_tile_intersection_footprint", "not selected; footprint re-evaluation is deferred until public/API paths fail with source evidence"),
+        ("source_verified_internal_loop", "not selected; source-verified gsplat loop did not succeed or was not required for this run"),
+        ("path_b_lower_level_private_api", "not selected; PR21.1c uses installed public/wrapper symbols without modifying private gsplat code"),
+        ("path_c_tile_intersection_footprint", "not selected; proxy or geometric footprint fallback is not exact evidence"),
         ("path_d_source_level_failure", "selected only when no valid contributor path succeeds"),
     ]:
         if path_name not in attempted_names and path_name != selected:
@@ -1309,6 +1332,15 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
         "",
         "## gsplat Metadata Path",
         f"- Rasterization succeeded: `{summary.get('gsplat_rasterization_succeeded')}`",
+        f"- Contributor path: `{summary.get('contributor_path_selected')}`",
+        f"- Internal loop attempted: `{summary.get('internal_loop_replay_attempted')}`",
+        f"- Internal loop succeeded: `{summary.get('internal_loop_replay_succeeded')}`",
+        f"- Internal loop packed mode: `{summary.get('packed_mode_for_internal_loop')}`",
+        f"- Shape validation succeeded: `{summary.get('internal_loop_shape_validation_succeeded')}`",
+        f"- Rasterize-to-indices succeeded: `{summary.get('rasterize_to_indices_call_succeeded')}`",
+        f"- Accumulate updated render alphas: `{summary.get('accumulate_updated_render_alphas')}`",
+        f"- Contributor rows before selected-pixel filtering: `{summary.get('total_contributor_rows_before_filter')}`",
+        f"- Selected-pixel hit count: `{summary.get('selected_pixel_hit_count')}`",
         f"- Contributor IDs available: `{summary.get('exact_contributor_ids_available')}`",
         "",
         "## Limitations",
@@ -1338,6 +1370,361 @@ def _tensor_shape(value: Any) -> str:
     return str(tuple(shape)) if shape != "" else ""
 
 
+def _shape_tuple(value: Any) -> tuple[int, ...]:
+    shape = getattr(value, "shape", ())
+    try:
+        return tuple(int(item) for item in shape)
+    except Exception:
+        return ()
+
+
+def _tensor_numel(value: Any) -> int:
+    if hasattr(value, "numel"):
+        return int(value.numel())
+    try:
+        return len(value)
+    except Exception:
+        return 0
+
+
+def _shape_text(shape: tuple[int, ...]) -> str:
+    return str(tuple(shape))
+
+
+def _internal_shape_row(tensor_name: str, expected: tuple[int, ...], value: Any, shape_ok: bool, notes: str = "") -> dict[str, Any]:
+    _, _, dtype, device = _value_type_shape(value)
+    return {
+        "tensor_name": tensor_name,
+        "expected_shape": _shape_text(expected),
+        "actual_shape": _tensor_shape(value),
+        "dtype": dtype,
+        "device": device,
+        "shape_ok": _bool_text(shape_ok),
+        "notes": notes,
+    }
+
+
+def validate_internal_loop_shapes(
+    *,
+    means2d: Any,
+    conics: Any,
+    opacities: Any,
+    colors: Any,
+    isect_offsets: Any,
+    render_alphas: Any,
+    transmittances: Any,
+    image_width: int,
+    image_height: int,
+) -> tuple[bool, list[dict[str, Any]], tuple[int, ...], int]:
+    means_shape = _shape_tuple(means2d)
+    image_dims = means_shape[:-2] if len(means_shape) >= 2 else ()
+    n_gaussians = means_shape[-2] if len(means_shape) >= 2 else 0
+    channels = _shape_tuple(colors)[-1] if _shape_tuple(colors) else 0
+    offsets_shape = _shape_tuple(isect_offsets)
+    tile_shape = offsets_shape[-2:] if len(offsets_shape) >= 2 else ()
+    expected = {
+        "means2d": image_dims + (n_gaussians, 2),
+        "conics": image_dims + (n_gaussians, 3),
+        "opacities": image_dims + (n_gaussians,),
+        "colors": image_dims + (n_gaussians, channels),
+        "isect_offsets": image_dims + tile_shape,
+        "render_alphas": image_dims + (image_height, image_width, 1),
+        "transmittances": image_dims + (image_height, image_width),
+    }
+    values = {
+        "means2d": means2d,
+        "conics": conics,
+        "opacities": opacities,
+        "colors": colors,
+        "isect_offsets": isect_offsets,
+        "render_alphas": render_alphas,
+        "transmittances": transmittances,
+    }
+    rows = []
+    ok = True
+    for name, expected_shape in expected.items():
+        actual = _shape_tuple(values[name])
+        shape_ok = bool(expected_shape) and actual == expected_shape
+        ok = ok and shape_ok
+        rows.append(_internal_shape_row(name, expected_shape, values[name], shape_ok))
+    return ok, rows, image_dims, n_gaussians
+
+
+def _expand_colors_for_internal_loop(colors: Any, means2d: Any) -> Any:
+    image_dims = _shape_tuple(means2d)[:-2]
+    n_gaussians = _shape_tuple(means2d)[-2] if len(_shape_tuple(means2d)) >= 2 else 0
+    color_shape = _shape_tuple(colors)
+    if color_shape[:-2] == image_dims and len(color_shape) >= 2:
+        return colors
+    if len(color_shape) == 2 and color_shape[0] == n_gaussians and image_dims and hasattr(colors, "reshape") and hasattr(colors, "expand"):
+        return colors.reshape((1,) * len(image_dims) + color_shape).expand(image_dims + color_shape)
+    return colors
+
+
+def _to_int_list(value: Any) -> list[int]:
+    if value is None:
+        return []
+    item = value
+    if hasattr(item, "detach"):
+        item = item.detach()
+    if hasattr(item, "cpu"):
+        item = item.cpu()
+    if hasattr(item, "numpy"):
+        item = item.numpy()
+    if hasattr(item, "tolist"):
+        item = item.tolist()
+    if isinstance(item, (int, float)):
+        return [int(item)]
+    return [int(part) for part in item]
+
+
+def _make_exact_contributor_rows_from_indices(
+    *,
+    gaussian_ids: list[int],
+    pixel_ids: list[int],
+    image_ids: list[int],
+    meta: dict[str, Any],
+    packed: bool,
+    selected_views: list[dict[str, str]],
+    selected_pixels: list[dict[str, Any]],
+    max_contributors_per_pixel: int,
+    attribution_method: str,
+) -> tuple[list[dict[str, Any]], bool, str]:
+    compact_map = None
+    mapping_mode = "direct gaussian ids"
+    if packed and "gaussian_ids" in meta:
+        compact_map = _to_int_list(meta["gaussian_ids"])
+        mapping_mode = "metadata.gaussian_ids compact mapping"
+    selected_by_pixel = {(row["view_name"], int(row["pixel_id"])): row for row in selected_pixels}
+    view_by_index = [row.get("requested_view_name", "") for row in selected_views]
+    rows: list[dict[str, Any]] = []
+    counts: dict[tuple[str, int], int] = defaultdict(int)
+    for index, gid in enumerate(gaussian_ids):
+        raw_gid = int(gid)
+        compact_mapping_used = False
+        if compact_map is not None and 0 <= raw_gid < len(compact_map):
+            raw_gid = int(compact_map[raw_gid])
+            compact_mapping_used = True
+        pixel_id = int(pixel_ids[index]) if index < len(pixel_ids) else 0
+        camera_id = int(image_ids[index]) if index < len(image_ids) else 0
+        if camera_id >= len(view_by_index):
+            continue
+        view_name = view_by_index[camera_id]
+        key = (view_name, pixel_id)
+        selected = selected_by_pixel.get(key)
+        if not selected:
+            continue
+        if counts[key] >= max_contributors_per_pixel:
+            continue
+        counts[key] += 1
+        rows.append(
+            {
+                "scene": selected.get("scene", ""),
+                "condition": selected.get("condition", ""),
+                "subset_name": selected.get("subset_name", ""),
+                "view_name": view_name,
+                "view_group": selected.get("view_group") or _group_for_view(view_name),
+                "pixel_x": selected.get("pixel_x", ""),
+                "pixel_y": selected.get("pixel_y", ""),
+                "pixel_id": pixel_id,
+                "gaussian_id": raw_gid,
+                "contributor_rank": counts[key],
+                "depth_order": counts[key],
+                "alpha_contribution": "",
+                "transmittance_before": "",
+                "splat_weight": "",
+                "opacity_after_activation": "",
+                "color_contribution_r": "",
+                "color_contribution_g": "",
+                "color_contribution_b": "",
+                "residual_l1": selected.get("residual_l1", ""),
+                "residual_weighted_splat": "",
+                "evidence_quality": "exact_sparse_contributor_id_only",
+                "attribution_method": attribution_method,
+                "_compact_gaussian_id_mapping_used": compact_mapping_used,
+            }
+        )
+    return rows, any(row.get("_compact_gaussian_id_mapping_used") for row in rows), mapping_mode
+
+
+def recover_contributors_by_gsplat_internal_loop(
+    *,
+    rasterize_api: Any,
+    accumulate_api: Any,
+    meta: dict[str, Any],
+    colors: Any,
+    image_width: int,
+    image_height: int,
+    selected_views: list[dict[str, str]],
+    selected_pixels: list[dict[str, Any]],
+    max_contributors_per_pixel: int,
+    torch: Any,
+    packed: bool,
+    batch_per_iter: int = 100,
+) -> dict[str, Any]:
+    shape_rows: list[dict[str, Any]] = []
+    attempt_row: dict[str, Any] = {
+        "attempt_name": "source_verified_internal_loop",
+        "packed": _bool_text(packed),
+        "attempted": "true",
+        "succeeded": "false",
+        "means2d_shape": _tensor_shape(meta.get("means2d")),
+        "conics_shape": _tensor_shape(meta.get("conics")),
+        "opacities_shape": _tensor_shape(meta.get("opacities")),
+        "colors_shape": _tensor_shape(colors),
+        "isect_offsets_shape": _tensor_shape(meta.get("isect_offsets")),
+        "flatten_ids_shape": _tensor_shape(meta.get("flatten_ids")),
+        "render_alphas_shape": "",
+        "transmittances_shape": "",
+        "num_batches": 0,
+        "total_contributor_rows_before_filter": 0,
+        "selected_pixel_hit_count": 0,
+        "error": "",
+        "notes": "",
+    }
+    required = ["means2d", "conics", "opacities", "isect_offsets", "flatten_ids"]
+    missing = [name for name in required if name not in meta]
+    if missing:
+        attempt_row["error"] = f"missing metadata: {missing}"
+        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
+    if rasterize_api is None:
+        attempt_row["error"] = "rasterize_to_indices_in_range unavailable"
+        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
+    if accumulate_api is None:
+        attempt_row["error"] = "accumulate unavailable"
+        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": attempt_row["error"]}}
+
+    try:
+        means2d = meta["means2d"]
+        conics = meta["conics"]
+        opacities = meta["opacities"]
+        isect_offsets = meta["isect_offsets"]
+        flatten_ids = meta["flatten_ids"]
+        colors_for_accumulate = _expand_colors_for_internal_loop(colors, means2d)
+        image_dims = _shape_tuple(means2d)[:-2]
+        device = getattr(means2d, "device", None)
+        render_alphas = torch.zeros(image_dims + (image_height, image_width, 1), device=device)
+        transmittances = 1.0 - render_alphas[..., 0]
+        attempt_row["colors_shape"] = _tensor_shape(colors_for_accumulate)
+        attempt_row["render_alphas_shape"] = _tensor_shape(render_alphas)
+        attempt_row["transmittances_shape"] = _tensor_shape(transmittances)
+        shapes_ok, shape_rows, _, _ = validate_internal_loop_shapes(
+            means2d=means2d,
+            conics=conics,
+            opacities=opacities,
+            colors=colors_for_accumulate,
+            isect_offsets=isect_offsets,
+            render_alphas=render_alphas,
+            transmittances=transmittances,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        if not shapes_ok:
+            attempt_row["error"] = "internal loop shape validation failed"
+            return {
+                "rows": [],
+                "shape_rows": shape_rows,
+                "attempt_row": attempt_row,
+                "status": {
+                    "internal_loop_shape_validation_succeeded": False,
+                    "error": attempt_row["error"],
+                },
+            }
+        block_size = int(meta.get("tile_size", 16)) * int(meta.get("tile_size", 16))
+        n_isects = _tensor_numel(flatten_ids)
+        try:
+            sentinel = torch.tensor([n_isects], device=device, dtype=getattr(isect_offsets, "dtype", None))
+        except TypeError:
+            sentinel = torch.tensor([n_isects], device=device)
+        isect_offsets_fl = torch.cat([isect_offsets.flatten(), sentinel])
+        max_range = int((isect_offsets_fl[1:] - isect_offsets_fl[:-1]).max().item())
+        num_batches = (max_range + block_size - 1) // block_size if block_size else 0
+        attempt_row["num_batches"] = num_batches
+        collected_gids: list[int] = []
+        collected_pixels: list[int] = []
+        collected_images: list[int] = []
+        rasterize_call_succeeded = False
+        accumulate_succeeded = False
+        for step in range(0, num_batches, batch_per_iter):
+            transmittances = 1.0 - render_alphas[..., 0]
+            result = _call_rasterize_to_indices_in_range_safely(
+                rasterize_api,
+                range_start=step,
+                range_end=step + batch_per_iter,
+                transmittances=transmittances,
+                means2d=means2d,
+                conics=conics,
+                opacities=opacities,
+                image_width=image_width,
+                image_height=image_height,
+                tile_size=int(meta.get("tile_size", 16)),
+                isect_offsets=isect_offsets,
+                flatten_ids=flatten_ids,
+            )
+            rasterize_call_succeeded = True
+            gs_ids, pixel_ids, image_ids = _normalize_api_result(result)
+            gs_list = _to_int_list(gs_ids)
+            if not gs_list:
+                break
+            pixel_list = _to_int_list(pixel_ids)
+            image_list = _to_int_list(image_ids)
+            collected_gids.extend(gs_list)
+            collected_pixels.extend(pixel_list)
+            collected_images.extend(image_list if image_list else [0] * len(gs_list))
+            _, accs_step = accumulate_api(
+                means2d,
+                conics,
+                opacities,
+                colors_for_accumulate,
+                gs_ids,
+                pixel_ids,
+                image_ids,
+                image_width,
+                image_height,
+            )
+            render_alphas = render_alphas + accs_step * transmittances[..., None]
+            accumulate_succeeded = True
+        rows, compact_used, mapping_mode = _make_exact_contributor_rows_from_indices(
+            gaussian_ids=collected_gids,
+            pixel_ids=collected_pixels,
+            image_ids=collected_images,
+            meta=meta,
+            packed=packed,
+            selected_views=selected_views,
+            selected_pixels=selected_pixels,
+            max_contributors_per_pixel=max_contributors_per_pixel,
+            attribution_method="gsplat_internal_loop_contributor_id_replay",
+        )
+        selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in selected_pixels}
+        hit_keys = {(row["view_name"], int(row["pixel_id"])) for row in rows}
+        attempt_row["total_contributor_rows_before_filter"] = len(collected_gids)
+        attempt_row["selected_pixel_hit_count"] = len(hit_keys)
+        attempt_row["succeeded"] = _bool_text(bool(rows))
+        if not rows:
+            attempt_row["error"] = "selected_pixel_filtering_failed" if collected_gids else "internal loop returned no contributors"
+        return {
+            "rows": rows,
+            "shape_rows": shape_rows,
+            "attempt_row": attempt_row,
+            "status": {
+                "internal_loop_shape_validation_succeeded": True,
+                "internal_loop_num_batches": num_batches,
+                "total_contributor_rows_before_filter": len(collected_gids),
+                "selected_pixel_hit_count": len(hit_keys),
+                "selected_pixel_no_hit_count": max(0, len(selected_keys - hit_keys)),
+                "selected_pixel_hit_rate": len(hit_keys) / len(selected_keys) if selected_keys else 0.0,
+                "rasterize_to_indices_call_succeeded": rasterize_call_succeeded,
+                "accumulate_succeeded": accumulate_succeeded,
+                "compact_gaussian_id_mapping_used": compact_used,
+                "gaussian_id_mapping_mode": mapping_mode,
+                "error": attempt_row["error"],
+            },
+        }
+    except Exception as exc:
+        attempt_row["error"] = repr(exc)
+        return {"rows": [], "shape_rows": shape_rows, "attempt_row": attempt_row, "status": {"error": repr(exc)}}
+
+
 def _try_server_gsplat_replay(
     *,
     run_dir: Path,
@@ -1355,6 +1742,8 @@ def _try_server_gsplat_replay(
     transmittance_rows: list[dict[str, Any]] = []
     raster_output_rows: list[dict[str, Any]] = []
     source_rows = _audit_gsplat_source()
+    internal_loop_shape_rows: list[dict[str, Any]] = []
+    internal_loop_attempt_rows: list[dict[str, Any]] = []
     path_attempt_rows: list[dict[str, Any]] = []
     status: dict[str, Any] = {
         "transmittance_source_selected": "",
@@ -1371,6 +1760,15 @@ def _try_server_gsplat_replay(
         "rasterize_to_indices_call_succeeded": False,
         "rasterize_output_tuple_interpretation": "",
         "compact_gaussian_id_mapping_used": False,
+        "gaussian_id_mapping_mode": "",
+        "internal_loop_replay_attempted": False,
+        "internal_loop_replay_succeeded": False,
+        "packed_mode_for_internal_loop": "",
+        "internal_loop_shape_validation_succeeded": False,
+        "internal_loop_batch_per_iter": 100,
+        "internal_loop_num_batches": 0,
+        "accumulate_updated_render_alphas": False,
+        "total_contributor_rows_before_filter": 0,
         "sparse_contributor_filter_succeeded": False,
         "selected_pixel_hit_count": 0,
         "selected_pixel_no_hit_count": len(selected_pixels),
@@ -1395,6 +1793,8 @@ def _try_server_gsplat_replay(
             "transmittance_rows": transmittance_rows,
             "raster_output_rows": raster_output_rows,
             "source_rows": source_rows,
+            "internal_loop_shape_rows": internal_loop_shape_rows,
+            "internal_loop_attempt_rows": internal_loop_attempt_rows,
             "path_attempt_rows": path_attempt_rows,
             "status": status,
         }
@@ -1467,87 +1867,199 @@ def _try_server_gsplat_replay(
                     "inspect gsplat 1.5.3 API/source or use a lower-level gsplat contributor path",
                 )
             )
-            return {
-                "exact_rows": exact_rows,
-                "metadata_rows": metadata_rows,
-                "missing_rows": missing_rows,
-                "blockers": blockers,
-                "api_rows": api_rows,
-                "transmittance_rows": transmittance_rows,
-                "raster_output_rows": raster_output_rows,
-                "source_rows": source_rows,
-                "path_attempt_rows": [
-                    {
-                        "path_name": "path_a_public_rasterize_to_indices_in_range",
-                        "attempted": "true",
-                        "succeeded": "false",
-                        "evidence_quality_if_success": "",
-                        "transmittance_source": source,
-                        "output_tuple_shapes": ";".join(str(row.get("shape", "")) for row in raster_output_rows if str(row.get("output_name", "")).startswith("rasterization_output")),
-                        "output_tuple_interpretation": "unavailable",
-                        "gaussian_id_mapping": "",
-                        "pixel_id_mapping": "pixel_id = y * width + x",
-                        "image_id_mapping": "",
-                        "selected_pixel_hit_count": 0,
-                        "exact_row_count": 0,
-                        "error": trans_error,
-                        "notes": "no valid transmittance source",
-                    }
-                ],
-                "status": status,
-            }
-        contributor_rows = _extract_contributors_with_gsplat_api(
-            api=api,
-            meta=meta,
-            transmittances=transmittances,
-            image_width=int(cameras["width"]),
-            image_height=int(cameras["height"]),
-            selected_views=selected_views,
-            selected_pixels=selected_pixels,
-            max_contributors_per_pixel=max_contributors_per_pixel,
-            torch=torch,
-        )
-        exact_rows.extend(contributor_rows)
-        status["rasterize_to_indices_call_succeeded"] = True
-        status["rasterize_output_tuple_interpretation"] = "gaussian_ids;pixel_ids;image_ids"
-        status["compact_gaussian_id_mapping_used"] = any(row.get("_compact_gaussian_id_mapping_used") for row in exact_rows)
-        selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in selected_pixels}
-        hit_keys = {(row["view_name"], int(row["pixel_id"])) for row in exact_rows}
-        status["selected_pixel_hit_count"] = len(hit_keys)
-        status["selected_pixel_no_hit_count"] = max(0, len(selected_keys - hit_keys))
-        status["selected_pixel_hit_rate"] = len(hit_keys) / len(selected_keys) if selected_keys else 0.0
-        status["sparse_contributor_filter_succeeded"] = bool(hit_keys)
-        status["image_id_mapping_supported"] = bool(exact_rows)
-        status["exact_contributor_id_only_succeeded"] = bool(exact_rows)
-        status["exact_render_contribution_succeeded"] = False
-        status["exact_contributor_id_row_count"] = len(exact_rows)
-        status["exact_render_contribution_row_count"] = 0
         path_attempt_rows.append(
             {
                 "path_name": "path_a_public_rasterize_to_indices_in_range",
                 "attempted": "true",
-                "succeeded": _bool_text(bool(exact_rows)),
+                "succeeded": "false",
                 "evidence_quality_if_success": "exact_sparse_contributor_id_only",
                 "transmittance_source": source,
                 "output_tuple_shapes": ";".join(str(row.get("shape", "")) for row in raster_output_rows if str(row.get("output_name", "")).startswith("rasterization_output")),
-                "output_tuple_interpretation": "gaussian_ids;pixel_ids;image_ids",
-                "gaussian_id_mapping": "metadata.gaussian_ids compact mapping" if status["compact_gaussian_id_mapping_used"] else "direct gaussian ids",
+                "output_tuple_interpretation": "gaussian_ids;pixel_ids;image_ids" if trans_ok else "unavailable",
+                "gaussian_id_mapping": "",
                 "pixel_id_mapping": "pixel_id = y * width + x",
                 "image_id_mapping": "image_id indexes selected view order",
-                "selected_pixel_hit_count": status["selected_pixel_hit_count"],
-                "exact_row_count": len(exact_rows),
-                "error": "" if exact_rows else "no selected pixels hit",
-                "notes": "ID-only evidence unless contribution weights are later recovered",
+                "selected_pixel_hit_count": 0,
+                "exact_row_count": 0,
+                "error": "" if trans_ok else trans_error,
+                "notes": "legacy path retained as audit; PR21.1c uses source-verified internal loop",
             }
         )
-        if not contributor_rows:
+
+        internal_api = _find_gsplat_callable("rasterize_to_indices_in_range")
+        accumulate_api = _find_gsplat_callable("accumulate")
+        internal_attempts: list[tuple[str, bool, dict[str, Any]]] = []
+        with torch.no_grad():
+            try:
+                unpacked_outputs = rasterization(
+                    means=tensors["means"],
+                    quats=tensors["quats"],
+                    scales=tensors["scales"],
+                    opacities=tensors["opacities"],
+                    colors=tensors["colors"],
+                    viewmats=cameras["viewmats"],
+                    Ks=cameras["Ks"],
+                    width=int(cameras["width"]),
+                    height=int(cameras["height"]),
+                    packed=False,
+                )
+                if isinstance(unpacked_outputs, tuple) and len(unpacked_outputs) >= 3 and isinstance(unpacked_outputs[2], dict):
+                    internal_attempts.append(("packed_false", False, unpacked_outputs[2]))
+                    metadata_rows = _metadata_audit(unpacked_outputs[2])
+                else:
+                    internal_loop_attempt_rows.append(
+                        {
+                            "attempt_name": "source_verified_internal_loop",
+                            "packed": "false",
+                            "attempted": "true",
+                            "succeeded": "false",
+                            "means2d_shape": "",
+                            "conics_shape": "",
+                            "opacities_shape": "",
+                            "colors_shape": "",
+                            "isect_offsets_shape": "",
+                            "flatten_ids_shape": "",
+                            "render_alphas_shape": "",
+                            "transmittances_shape": "",
+                            "num_batches": 0,
+                            "total_contributor_rows_before_filter": 0,
+                            "selected_pixel_hit_count": 0,
+                            "error": f"unexpected unpacked rasterization output type: {type(unpacked_outputs)}",
+                            "notes": "packed=False rasterization did not return metadata",
+                        }
+                    )
+            except Exception as exc:
+                internal_loop_attempt_rows.append(
+                    {
+                        "attempt_name": "source_verified_internal_loop",
+                        "packed": "false",
+                        "attempted": "true",
+                        "succeeded": "false",
+                        "means2d_shape": "",
+                        "conics_shape": "",
+                        "opacities_shape": "",
+                        "colors_shape": "",
+                        "isect_offsets_shape": "",
+                        "flatten_ids_shape": "",
+                        "render_alphas_shape": "",
+                        "transmittances_shape": "",
+                        "num_batches": 0,
+                        "total_contributor_rows_before_filter": 0,
+                        "selected_pixel_hit_count": 0,
+                        "error": repr(exc),
+                        "notes": "packed=False rasterization failed before internal-loop replay",
+                    }
+                )
+        internal_attempts.append(("packed_true", True, meta))
+        internal_error = ""
+        for attempt_name, packed, attempt_meta in internal_attempts:
+            if exact_rows:
+                break
+            result = recover_contributors_by_gsplat_internal_loop(
+                rasterize_api=internal_api,
+                accumulate_api=accumulate_api,
+                meta=attempt_meta,
+                colors=tensors["colors"],
+                image_width=int(cameras["width"]),
+                image_height=int(cameras["height"]),
+                selected_views=selected_views,
+                selected_pixels=selected_pixels,
+                max_contributors_per_pixel=max_contributors_per_pixel,
+                torch=torch,
+                packed=packed,
+                batch_per_iter=int(status["internal_loop_batch_per_iter"]),
+            )
+            attempt_row = dict(result["attempt_row"])
+            attempt_row["attempt_name"] = attempt_name
+            internal_loop_attempt_rows.append(attempt_row)
+            internal_loop_shape_rows.extend(result["shape_rows"])
+            attempt_status = result["status"]
+            status["internal_loop_replay_attempted"] = True
+            internal_error = str(attempt_status.get("error", ""))
+            if attempt_status.get("internal_loop_shape_validation_succeeded"):
+                status["internal_loop_shape_validation_succeeded"] = True
+            if attempt_row.get("succeeded") == "true":
+                exact_rows.extend(result["rows"])
+                status["contributor_path_selected"] = "source_verified_internal_loop"
+                status["contributor_path_reason"] = "replayed gsplat _torch_impl-style loop with transmittances = 1 - render_alphas[..., 0]"
+                status["internal_loop_replay_succeeded"] = True
+                status["packed_mode_for_internal_loop"] = "packed" if packed else "unpacked"
+                status["internal_loop_num_batches"] = attempt_status.get("internal_loop_num_batches", 0)
+                status["total_contributor_rows_before_filter"] = attempt_status.get("total_contributor_rows_before_filter", 0)
+                status["selected_pixel_hit_count"] = attempt_status.get("selected_pixel_hit_count", 0)
+                status["selected_pixel_no_hit_count"] = attempt_status.get("selected_pixel_no_hit_count", len(selected_pixels))
+                status["selected_pixel_hit_rate"] = attempt_status.get("selected_pixel_hit_rate", 0.0)
+                status["rasterize_to_indices_call_succeeded"] = bool(attempt_status.get("rasterize_to_indices_call_succeeded"))
+                status["accumulate_updated_render_alphas"] = bool(attempt_status.get("accumulate_succeeded"))
+                status["rasterize_output_tuple_interpretation"] = "gaussian_ids;pixel_ids;image_ids"
+                status["compact_gaussian_id_mapping_used"] = bool(attempt_status.get("compact_gaussian_id_mapping_used"))
+                status["gaussian_id_mapping_mode"] = attempt_status.get("gaussian_id_mapping_mode", "direct gaussian ids")
+                status["sparse_contributor_filter_succeeded"] = True
+                status["image_id_mapping_supported"] = True
+                status["exact_contributor_id_only_succeeded"] = True
+                status["exact_render_contribution_succeeded"] = False
+                status["exact_contributor_id_row_count"] = len(exact_rows)
+                status["exact_render_contribution_row_count"] = 0
+                path_attempt_rows.append(
+                    {
+                        "path_name": "source_verified_internal_loop",
+                        "attempted": "true",
+                        "succeeded": "true",
+                        "evidence_quality_if_success": "exact_sparse_contributor_id_only",
+                        "transmittance_source": "dynamic: 1.0 - render_alphas[..., 0]",
+                        "output_tuple_shapes": ";".join(str(row.get("shape", "")) for row in raster_output_rows if str(row.get("output_name", "")).startswith("rasterization_output")),
+                        "output_tuple_interpretation": "gaussian_ids;pixel_ids;image_ids",
+                        "gaussian_id_mapping": status["gaussian_id_mapping_mode"],
+                        "pixel_id_mapping": "pixel_id = y * width + x",
+                        "image_id_mapping": "image_id indexes selected view order",
+                        "selected_pixel_hit_count": status["selected_pixel_hit_count"],
+                        "exact_row_count": len(exact_rows),
+                        "error": "",
+                        "notes": "ID-only evidence; alpha/transmittance/splat weights not claimed",
+                    }
+                )
+        if not exact_rows and trans_ok and transmittances is not None:
+            contributor_rows = _extract_contributors_with_gsplat_api(
+                api=api,
+                meta=meta,
+                transmittances=transmittances,
+                image_width=int(cameras["width"]),
+                image_height=int(cameras["height"]),
+                selected_views=selected_views,
+                selected_pixels=selected_pixels,
+                max_contributors_per_pixel=max_contributors_per_pixel,
+                torch=torch,
+            )
+            exact_rows.extend(contributor_rows)
+            status["rasterize_to_indices_call_succeeded"] = True
+            status["rasterize_output_tuple_interpretation"] = "gaussian_ids;pixel_ids;image_ids"
+            status["compact_gaussian_id_mapping_used"] = any(row.get("_compact_gaussian_id_mapping_used") for row in exact_rows)
+            status["gaussian_id_mapping_mode"] = "metadata.gaussian_ids compact mapping" if status["compact_gaussian_id_mapping_used"] else "direct gaussian ids"
+            selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in selected_pixels}
+            hit_keys = {(row["view_name"], int(row["pixel_id"])) for row in exact_rows}
+            status["selected_pixel_hit_count"] = len(hit_keys)
+            status["selected_pixel_no_hit_count"] = max(0, len(selected_keys - hit_keys))
+            status["selected_pixel_hit_rate"] = len(hit_keys) / len(selected_keys) if selected_keys else 0.0
+            status["sparse_contributor_filter_succeeded"] = bool(hit_keys)
+            status["image_id_mapping_supported"] = bool(exact_rows)
+            status["exact_contributor_id_only_succeeded"] = bool(exact_rows)
+            status["exact_render_contribution_succeeded"] = False
+            status["exact_contributor_id_row_count"] = len(exact_rows)
+            status["exact_render_contribution_row_count"] = 0
+            if exact_rows:
+                path_attempt_rows[0]["succeeded"] = "true"
+                path_attempt_rows[0]["gaussian_id_mapping"] = status["gaussian_id_mapping_mode"]
+                path_attempt_rows[0]["selected_pixel_hit_count"] = status["selected_pixel_hit_count"]
+                path_attempt_rows[0]["exact_row_count"] = len(exact_rows)
+                path_attempt_rows[0]["error"] = ""
+        if not exact_rows:
             blockers.append(
                 _blocker(
                     "error",
                     "gsplat_sparse_contributors",
-                    "exact contributor IDs unavailable from gsplat metadata/API",
-                    "rasterization ran but selected-pixel contributor rows were empty",
-                    "inspect gsplat metadata and contributor API signature",
+                    "source-verified internal loop did not recover selected-pixel contributor IDs",
+                    f"packed_false_attempted=true; packed_true_attempted=true; internal_error={internal_error}",
+                    "inspect pr211_internal_loop_shape_audit.csv and pr211_internal_loop_attempts.csv",
                 )
             )
     except Exception as exc:
@@ -1591,6 +2103,8 @@ def _try_server_gsplat_replay(
         "transmittance_rows": transmittance_rows,
         "raster_output_rows": raster_output_rows,
         "source_rows": source_rows,
+        "internal_loop_shape_rows": internal_loop_shape_rows,
+        "internal_loop_attempt_rows": internal_loop_attempt_rows,
         "path_attempt_rows": path_attempt_rows,
         "status": status,
     }
@@ -1825,6 +2339,8 @@ def build_pr211_exact_sparse_attribution(
     transmittance_rows: list[dict[str, Any]] = []
     raster_output_rows: list[dict[str, Any]] = []
     source_rows: list[dict[str, Any]] = [{"item": "local-safe", "path": "", "line_number": "", "symbol": "", "signature": "", "snippet": "", "notes": "source audit requires installed gsplat"}]
+    internal_loop_shape_rows: list[dict[str, Any]] = []
+    internal_loop_attempt_rows: list[dict[str, Any]] = []
     path_attempt_rows: list[dict[str, Any]] = []
     missing_rows: list[dict[str, Any]] = []
     replay_status: dict[str, Any] = {
@@ -1842,6 +2358,15 @@ def build_pr211_exact_sparse_attribution(
         "rasterize_to_indices_call_succeeded": False,
         "rasterize_output_tuple_interpretation": "",
         "compact_gaussian_id_mapping_used": False,
+        "gaussian_id_mapping_mode": "",
+        "internal_loop_replay_attempted": False,
+        "internal_loop_replay_succeeded": False,
+        "packed_mode_for_internal_loop": "",
+        "internal_loop_shape_validation_succeeded": False,
+        "internal_loop_batch_per_iter": 100,
+        "internal_loop_num_batches": 0,
+        "accumulate_updated_render_alphas": False,
+        "total_contributor_rows_before_filter": 0,
         "sparse_contributor_filter_succeeded": False,
         "selected_pixel_hit_count": 0,
         "selected_pixel_no_hit_count": len(selected_pixels),
@@ -1854,6 +2379,7 @@ def build_pr211_exact_sparse_attribution(
     if synthetic_exact_rows is not None:
         exact_rows = [dict(row) for row in synthetic_exact_rows]
         synthetic_render_success = any(row.get("evidence_quality") == "exact_sparse_render_contribution" for row in exact_rows)
+        selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in exact_rows if row.get("pixel_id") not in ("", None)}
         metadata_rows = [{"metadata_key": "synthetic_contributors", "available": "true", "type": "list", "shape": len(exact_rows), "dtype": "", "device": "cpu", "used_for": "smoke test aggregation", "notes": "local-safe synthetic exact rows"}]
         contributor_api_rows = [
             {
@@ -1885,7 +2411,38 @@ def build_pr211_exact_sparse_attribution(
             }
         ]
         raster_output_rows = [{"output_name": "synthetic_exact_rows", "available": "true", "type": "list", "shape": len(exact_rows), "dtype": "", "device": "cpu", "notes": "local-safe synthetic success path"}]
-        selected_keys = {(row["view_name"], int(row["pixel_id"])) for row in exact_rows if row.get("pixel_id") not in ("", None)}
+        internal_loop_shape_rows = [
+            {
+                "tensor_name": "synthetic",
+                "expected_shape": "",
+                "actual_shape": str(len(exact_rows)),
+                "dtype": "",
+                "device": "cpu",
+                "shape_ok": "true",
+                "notes": "local-safe synthetic exact rows bypass server-only internal loop",
+            }
+        ]
+        internal_loop_attempt_rows = [
+            {
+                "attempt_name": "synthetic_exact_rows",
+                "packed": "",
+                "attempted": "false",
+                "succeeded": "true",
+                "means2d_shape": "",
+                "conics_shape": "",
+                "opacities_shape": "",
+                "colors_shape": "",
+                "isect_offsets_shape": "",
+                "flatten_ids_shape": "",
+                "render_alphas_shape": "",
+                "transmittances_shape": "",
+                "num_batches": 0,
+                "total_contributor_rows_before_filter": len(exact_rows),
+                "selected_pixel_hit_count": len(selected_keys),
+                "error": "",
+                "notes": "local-safe synthetic path",
+            }
+        ]
         replay_status.update(
             {
                 "transmittance_source_selected": "synthetic.transmittances",
@@ -1899,6 +2456,7 @@ def build_pr211_exact_sparse_attribution(
                 "contributor_api_dry_run_succeeded": True,
                 "rasterize_to_indices_call_succeeded": True,
                 "rasterize_output_tuple_interpretation": "synthetic",
+                "gaussian_id_mapping_mode": "direct gaussian ids",
                 "sparse_contributor_filter_succeeded": bool(exact_rows),
                 "selected_pixel_hit_count": len(selected_keys),
                 "selected_pixel_no_hit_count": max(0, len(selected_pixels) - len(selected_keys)),
@@ -1952,6 +2510,38 @@ def build_pr211_exact_sparse_attribution(
             )
         ]
         raster_output_rows = [{"output_name": "", "available": "false", "type": "", "shape": "", "dtype": "", "device": "", "notes": "skipped due to readiness blockers or forced failure"}]
+        internal_loop_shape_rows = [
+            {
+                "tensor_name": "",
+                "expected_shape": "",
+                "actual_shape": "",
+                "dtype": "",
+                "device": "",
+                "shape_ok": "false",
+                "notes": "skipped due to readiness blockers or forced failure",
+            }
+        ]
+        internal_loop_attempt_rows = [
+            {
+                "attempt_name": "source_verified_internal_loop",
+                "packed": "",
+                "attempted": "false",
+                "succeeded": "false",
+                "means2d_shape": "",
+                "conics_shape": "",
+                "opacities_shape": "",
+                "colors_shape": "",
+                "isect_offsets_shape": "",
+                "flatten_ids_shape": "",
+                "render_alphas_shape": "",
+                "transmittances_shape": "",
+                "num_batches": 0,
+                "total_contributor_rows_before_filter": 0,
+                "selected_pixel_hit_count": 0,
+                "error": "skipped",
+                "notes": "forced or readiness failure path",
+            }
+        ]
         path_attempt_rows = [
             {
                 "path_name": "source_level_failure",
@@ -1995,6 +2585,8 @@ def build_pr211_exact_sparse_attribution(
         transmittance_rows = replay_result["transmittance_rows"]
         raster_output_rows = replay_result["raster_output_rows"]
         source_rows = replay_result["source_rows"]
+        internal_loop_shape_rows = replay_result["internal_loop_shape_rows"]
+        internal_loop_attempt_rows = replay_result["internal_loop_attempt_rows"]
         path_attempt_rows = replay_result["path_attempt_rows"]
         replay_status.update(replay_result["status"])
         replay_missing = replay_result["missing_rows"]
@@ -2012,15 +2604,14 @@ def build_pr211_exact_sparse_attribution(
             )
         )
     if exact_rows:
-        blockers = [row for row in blockers if row.get("component") != "gsplat_sparse_contributors"]
-    exact_succeeded = bool(exact_rows)
-    exact_succeeded = bool(
-        exact_succeeded
-        and replay_status.get("transmittance_resolution_succeeded")
+        blockers = [row for row in blockers if row.get("component") not in {"gsplat_sparse_contributors", "gsplat_transmittance_resolution"}]
+    legacy_path_succeeded = bool(
+        replay_status.get("transmittance_resolution_succeeded")
         and replay_status.get("contributor_api_dry_run_succeeded")
         and replay_status.get("rasterize_to_indices_call_succeeded")
-        and replay_status.get("selected_pixel_hit_count", 0) > 0
     )
+    internal_loop_succeeded = bool(replay_status.get("internal_loop_replay_succeeded"))
+    exact_succeeded = bool(exact_rows and (legacy_path_succeeded or internal_loop_succeeded) and replay_status.get("selected_pixel_hit_count", 0) > 0)
     if not exact_succeeded:
         exact_rows = []
     exact_render_success = bool(exact_succeeded and replay_status.get("exact_render_contribution_succeeded"))
@@ -2107,6 +2698,15 @@ def build_pr211_exact_sparse_attribution(
         "rasterize_to_indices_call_succeeded": bool(replay_status.get("rasterize_to_indices_call_succeeded")),
         "rasterize_output_tuple_interpretation": replay_status.get("rasterize_output_tuple_interpretation", ""),
         "compact_gaussian_id_mapping_used": bool(replay_status.get("compact_gaussian_id_mapping_used")),
+        "gaussian_id_mapping_mode": replay_status.get("gaussian_id_mapping_mode", ""),
+        "internal_loop_replay_attempted": bool(replay_status.get("internal_loop_replay_attempted")),
+        "internal_loop_replay_succeeded": bool(replay_status.get("internal_loop_replay_succeeded")),
+        "packed_mode_for_internal_loop": replay_status.get("packed_mode_for_internal_loop", ""),
+        "internal_loop_shape_validation_succeeded": bool(replay_status.get("internal_loop_shape_validation_succeeded")),
+        "internal_loop_batch_per_iter": replay_status.get("internal_loop_batch_per_iter", 100),
+        "internal_loop_num_batches": replay_status.get("internal_loop_num_batches", 0),
+        "accumulate_updated_render_alphas": bool(replay_status.get("accumulate_updated_render_alphas")),
+        "total_contributor_rows_before_filter": replay_status.get("total_contributor_rows_before_filter", 0),
         "sparse_contributor_filter_succeeded": bool(replay_status.get("sparse_contributor_filter_succeeded")),
         "selected_pixel_hit_count": replay_status.get("selected_pixel_hit_count", 0),
         "selected_pixel_no_hit_count": replay_status.get("selected_pixel_no_hit_count", len(selected_pixels)),
@@ -2146,6 +2746,8 @@ def build_pr211_exact_sparse_attribution(
     write_csv_rows(output_dir / "pr211_transmittance_audit.csv", transmittance_rows, TRANSMITTANCE_FIELDS)
     write_csv_rows(output_dir / "pr211_gsplat_rasterization_output_audit.csv", raster_output_rows, RASTER_OUTPUT_FIELDS)
     write_csv_rows(output_dir / "pr211_gsplat_source_audit.csv", source_rows, SOURCE_AUDIT_FIELDS)
+    write_csv_rows(output_dir / "pr211_internal_loop_shape_audit.csv", internal_loop_shape_rows, INTERNAL_LOOP_SHAPE_FIELDS)
+    write_csv_rows(output_dir / "pr211_internal_loop_attempts.csv", internal_loop_attempt_rows, INTERNAL_LOOP_ATTEMPT_FIELDS)
     write_json(output_dir / "pr211_contributor_path_decision.json", contributor_decision)
     write_csv_rows(output_dir / "pr211_contributor_path_attempts.csv", path_attempt_rows, PATH_ATTEMPT_FIELDS)
     write_csv_rows(output_dir / "pr211_exact_pixel_gaussian_contributions.csv", exact_rows, EXACT_FIELDS)

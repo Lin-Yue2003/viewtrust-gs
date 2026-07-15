@@ -19,6 +19,8 @@ REQUIRED_OUTPUTS = [
     "pr211_transmittance_audit.csv",
     "pr211_gsplat_rasterization_output_audit.csv",
     "pr211_gsplat_source_audit.csv",
+    "pr211_internal_loop_shape_audit.csv",
+    "pr211_internal_loop_attempts.csv",
     "pr211_contributor_path_decision.json",
     "pr211_contributor_path_attempts.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
@@ -266,6 +268,7 @@ def main() -> int:
     from viewtrust.analysis.gsplat_sparse_attribution import (
         _call_rasterize_to_indices_in_range_safely,
         _extract_contributors_with_gsplat_api,
+        recover_contributors_by_gsplat_internal_loop,
         build_pr211_exact_sparse_attribution,
     )
 
@@ -451,6 +454,145 @@ def main() -> int:
         assert compact_rows[0]["gaussian_id"] == 777
         assert compact_rows[0]["evidence_quality"] == "exact_sparse_contributor_id_only"
         assert compact_rows[0]["_compact_gaussian_id_mapping_used"] is True
+
+        import numpy as np
+
+        class NumpyTorch:
+            @staticmethod
+            def zeros(shape: tuple[int, ...], device: object = None) -> np.ndarray:
+                del device
+                return np.zeros(shape, dtype=np.float32)
+
+            @staticmethod
+            def tensor(values: list[int], device: object = None, dtype: object = None) -> np.ndarray:
+                del device
+                return np.array(values, dtype=dtype)
+
+            @staticmethod
+            def cat(values: list[np.ndarray]) -> np.ndarray:
+                return np.concatenate(values)
+
+        internal_meta = {
+            "means2d": np.zeros((2, 3, 2), dtype=np.float32),
+            "conics": np.zeros((2, 3, 3), dtype=np.float32),
+            "opacities": np.ones((2, 3), dtype=np.float32),
+            "isect_offsets": np.array([[[0]], [[2]]], dtype=np.int64),
+            "flatten_ids": np.array([0, 1, 2, 3], dtype=np.int64),
+            "tile_size": 1,
+        }
+        colors = np.ones((2, 3, 3), dtype=np.float32)
+        loop_calls: list[tuple[int, tuple[int, ...]]] = []
+        accumulate_calls = {"count": 0}
+
+        def fake_internal_rasterize(**kwargs: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            transmittances = kwargs["transmittances"]
+            assert getattr(transmittances, "shape", None) == (2, 4, 4)
+            step = int(kwargs["range_start"])
+            loop_calls.append((step, tuple(transmittances.shape)))
+            if step > 0:
+                return np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+            return np.array([1, 2], dtype=np.int64), np.array([5, 5], dtype=np.int64), np.array([0, 0], dtype=np.int64)
+
+        def fake_accumulate(*args: object) -> tuple[np.ndarray, np.ndarray]:
+            del args
+            accumulate_calls["count"] += 1
+            acc = np.zeros((2, 4, 4, 1), dtype=np.float32)
+            acc[0, 1, 1, 0] = 0.25
+            return np.zeros((2, 4, 4, 3), dtype=np.float32), acc
+
+        internal_result = recover_contributors_by_gsplat_internal_loop(
+            rasterize_api=fake_internal_rasterize,
+            accumulate_api=fake_accumulate,
+            meta=internal_meta,
+            colors=colors,
+            image_width=4,
+            image_height=4,
+            selected_views=[{"requested_view_name": "train_004"}, {"requested_view_name": "train_014"}],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 5,
+                    "residual_l1": 0.5,
+                }
+            ],
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            packed=False,
+            batch_per_iter=1,
+        )
+        assert loop_calls
+        assert accumulate_calls["count"] == 1
+        assert internal_result["attempt_row"]["succeeded"] == "true"
+        assert internal_result["status"]["internal_loop_shape_validation_succeeded"] is True
+        assert internal_result["status"]["rasterize_to_indices_call_succeeded"] is True
+        assert internal_result["status"]["accumulate_succeeded"] is True
+        assert internal_result["status"]["total_contributor_rows_before_filter"] == 2
+        assert internal_result["status"]["selected_pixel_hit_count"] == 1
+        assert internal_result["status"]["gaussian_id_mapping_mode"] == "direct gaussian ids"
+        assert len(internal_result["rows"]) == 2
+        assert internal_result["rows"][0]["evidence_quality"] == "exact_sparse_contributor_id_only"
+        assert internal_result["rows"][0]["attribution_method"] == "gsplat_internal_loop_contributor_id_replay"
+        assert internal_result["rows"][0]["splat_weight"] == ""
+
+        bad_shape_meta = dict(internal_meta)
+        bad_shape_meta["conics"] = np.zeros((2, 2, 3), dtype=np.float32)
+        bad_shape = recover_contributors_by_gsplat_internal_loop(
+            rasterize_api=fake_internal_rasterize,
+            accumulate_api=fake_accumulate,
+            meta=bad_shape_meta,
+            colors=colors,
+            image_width=4,
+            image_height=4,
+            selected_views=[{"requested_view_name": "train_004"}],
+            selected_pixels=[],
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            packed=False,
+            batch_per_iter=1,
+        )
+        assert not bad_shape["rows"]
+        assert bad_shape["attempt_row"]["error"] == "internal loop shape validation failed"
+
+        def fake_zero_hit_rasterize(**kwargs: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            if int(kwargs["range_start"]) > 0:
+                return np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+            return np.array([1], dtype=np.int64), np.array([6], dtype=np.int64), np.array([0], dtype=np.int64)
+
+        zero_hit = recover_contributors_by_gsplat_internal_loop(
+            rasterize_api=fake_zero_hit_rasterize,
+            accumulate_api=fake_accumulate,
+            meta=internal_meta,
+            colors=colors,
+            image_width=4,
+            image_height=4,
+            selected_views=[{"requested_view_name": "train_004"}],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 5,
+                    "residual_l1": 0.5,
+                }
+            ],
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            packed=False,
+            batch_per_iter=1,
+        )
+        assert not zero_hit["rows"]
+        assert zero_hit["attempt_row"]["total_contributor_rows_before_filter"] == 1
+        assert zero_hit["attempt_row"]["error"] == "selected_pixel_filtering_failed"
     print("pr211 exact sparse attribution smoke test ok")
     return 0
 

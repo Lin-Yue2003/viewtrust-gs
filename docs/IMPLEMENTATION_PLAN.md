@@ -527,3 +527,15 @@ recovered but alpha/transmittance/splat weights are unavailable. It still never
 uses PR20 proxy rows as exact evidence, keeps `ready_for_intervention = false`,
 and does not modify training, rendering, `third_party`, installed site-packages,
 or intervention behavior.
+
+PR21.1c adds a source-verified gsplat internal-loop replay for contributor-ID
+recovery. It reproduces the installed gsplat pattern
+`transmittances = 1.0 - render_alphas[..., 0]`, calls
+`rasterize_to_indices_in_range`, and updates `render_alphas` through
+`accumulate` for offline selected-pixel replay. It prefers `packed=False`
+metadata for source-compatible shapes, records shape/attempt audits, and labels
+successful rows as `exact_sparse_contributor_id_only` with
+`attribution_method = gsplat_internal_loop_contributor_id_replay`. PR21.1c does
+not claim weighted alpha/transmittance/splat semantics, does not use proxy rows
+as exact evidence, and remains observation-only with no training, rendering,
+`third_party`, installed site-packages, defense, or intervention changes.

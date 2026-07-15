@@ -153,6 +153,11 @@ source-guided contributor-ID-only evidence labeling, compact Gaussian ID
 mapping coverage through synthetic rows, no-proxy-fallback checks, and
 assertions that ID-only success does not claim alpha/transmittance/splat
 availability.
+PR21.1c extends the smoke with a fake source-verified gsplat internal loop. The
+fake rasterizer checks `transmittances` shape `(C, H, W)`, fake `accumulate`
+updates `render_alphas`, selected-pixel filtering recovers ID-only rows, shape
+mismatch fails cleanly, zero selected-pixel hits fail cleanly, and proxy rows
+are still never promoted to exact evidence.
 
 ## Observed Command Checks
 
@@ -271,6 +276,13 @@ PR21.1 inputs, with inspection of `pr211_gsplat_source_audit.csv`,
 `pr211_contributor_path_attempts.csv`, and with evidence-quality review for
 full weighted contribution vs contributor-ID-only success vs source-level
 failure
+PR21.1c source-verified internal-loop validation on real chair/drums PR21.1
+inputs, with inspection of `pr211_internal_loop_shape_audit.csv`,
+`pr211_internal_loop_attempts.csv`, `contributor_path_selected`,
+`packed_mode_for_internal_loop`, `internal_loop_num_batches`,
+`total_contributor_rows_before_filter`, `selected_pixel_hit_count`, and
+`accumulate_updated_render_alphas`. Successful PR21.1c output should be treated
+as ID-only unless alpha/transmittance/splat weights are separately verified.
 ```
 
 Command:

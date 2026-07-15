@@ -62,12 +62,17 @@ The server path attempts to:
    - rotations by quaternion normalization
    - colors from SH DC fields for replay compatibility
 3. Build camera intrinsics/extrinsics from strict PR21.0a matched cameras.
-4. Run `gsplat.rasterization(..., packed=True)`.
-5. Audit returned metadata keys.
-6. Resolve a valid transmittance tensor for `rasterize_to_indices_in_range`.
+4. Run `gsplat.rasterization(..., packed=True)` for compatibility audit.
+5. Audit returned metadata keys and high-level rasterization outputs.
+6. Resolve whether a legacy high-level transmittance tensor exists for
+   `rasterize_to_indices_in_range`.
 7. Audit installed gsplat source to decide the contributor extraction path.
-8. Use `rasterize_to_indices_in_range` when available to recover sparse
-   contributor IDs for selected pixels.
+8. Run a source-verified internal loop with `packed=False` when possible:
+   `transmittances = 1.0 - render_alphas[..., 0]`,
+   `rasterize_to_indices_in_range(...)`, then `accumulate(...)` to update
+   `render_alphas`.
+9. Recover sparse contributor IDs for selected pixels without using PR20 proxy
+   rows as exact evidence.
 
 If contributor IDs cannot be retrieved, PR21.1 writes blockers and
 `exact_attribution_succeeded = false`. It does not fabricate exact rows and
@@ -147,6 +152,42 @@ attribution_method = gsplat_sparse_contributor_id_replay
 
 Alpha, transmittance, and splat-weight fields remain empty in that mode.
 
+## Source-Verified Internal Loop
+
+PR21.1c uses the installed gsplat `_torch_impl.py` loop as implementation
+evidence. The key finding is that `transmittances` is not a stable metadata key
+or high-level rasterization output; it is computed inside the render loop as:
+
+```text
+transmittances = 1.0 - render_alphas[..., 0]
+```
+
+The PR21.1c replay therefore attempts `gsplat.rasterization(..., packed=False)`
+for contributor recovery so the metadata shapes match the source assertions:
+
+```text
+means2d:       image_dims + (N, 2)
+conics:        image_dims + (N, 3)
+opacities:     image_dims + (N,)
+colors:        image_dims + (N, channels)
+isect_offsets: image_dims + (tile_height, tile_width)
+render_alphas: image_dims + (H, W, 1)
+transmittance: image_dims + (H, W)
+```
+
+If `packed=False` is unavailable or fails, the replay records a source-validated
+packed attempt only if the shapes can be audited. It does not use proxy rows as
+exact evidence. Successful PR21.1c rows are intentionally ID-only:
+
+```text
+evidence_quality = exact_sparse_contributor_id_only
+attribution_method = gsplat_internal_loop_contributor_id_replay
+ready_for_intervention = false
+```
+
+Weighted alpha/transmittance/splat contribution is deferred until a later PR
+source-verifies those scalar semantics.
+
 ## Outputs
 
 PR21.1 writes:
@@ -161,6 +202,8 @@ pr211_gsplat_contributor_api_audit.csv
 pr211_transmittance_audit.csv
 pr211_gsplat_rasterization_output_audit.csv
 pr211_gsplat_source_audit.csv
+pr211_internal_loop_shape_audit.csv
+pr211_internal_loop_attempts.csv
 pr211_contributor_path_decision.json
 pr211_contributor_path_attempts.csv
 pr211_exact_pixel_gaussian_contributions.csv
