@@ -274,6 +274,50 @@ lists every searched root and candidate counts, while
 selected-pixel, config, and audit candidates. Candidate paths are discovery
 evidence only; they do not verify that a file is the exact PR20 residual source.
 
+## PR21.1g PR20 Selected-Pixel Provenance
+
+PR21.1g traces whether the drums selected pixels in
+`pr200_pixel_gaussian_contributions.csv` can be reproduced from PR20's own
+residual CSV artifacts and source-code path. It is a provenance audit only.
+It does not alter PR20 outputs, PR21 exact replay, training, rendering,
+`third_party`, or installed packages.
+
+```bash
+python scripts/measure/run_pr211g_pr20_selected_pixel_provenance_audit.py \
+  --pr200-dir "$PR200_DRUMS_DIR" \
+  --pr211f-dir "$PR211FA_DRUMS_DIR" \
+  --pr211-dir "$PR211E_DRUMS_DIR" \
+  --run-dir "$PR200_DRUMS_RUN_ROOT" \
+  --scene drums \
+  --condition corrupt_occluder \
+  --subset-name seed_20260710 \
+  --views train_004 train_009 train_012 train_017 train_007 train_013 \
+  --output-dir "$PR211G_DRUMS_DIR" \
+  --top-pixels-per-view 128 \
+  --max-contributors-per-pixel 16 \
+  --write-markdown
+```
+
+PR21.1g writes:
+
+```text
+pr211g_pr20_selected_pixel_provenance_summary.json
+pr211g_pr20_selected_from_proxy_contributions.csv
+pr211g_pr20_residual_csv_schema_audit.csv
+pr211g_pr20_residual_to_selected_reproduction.csv
+pr211g_pr20_selected_pixel_membership_in_residual_csv.csv
+pr211g_pr20_code_provenance_audit.csv
+pr211g_pr20_code_provenance_summary.json
+pr211g_pr20_pixel_set_hash_comparison.csv
+pr211g_pr20_selected_pixel_provenance_diagnosis.csv
+pr211g_pr20_selected_pixel_provenance_report.md
+artifact_manifest.csv
+```
+
+Even if PR20 selected-pixel provenance is verified, drums remains excluded from
+PR21.2 unless PR21 exact replay also validates normal-coordinate selected-pixel
+hits. PR20 proxy rows are not exact contributor rows.
+
 ## Outputs
 
 PR21.1 writes:
@@ -321,6 +365,7 @@ and artifact manifests:
 ```bash
 python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
 python scripts/smoke/pr211f_drums_selected_pixel_alignment_smoke_test.py
+python scripts/smoke/pr211g_pr20_selected_pixel_provenance_smoke_test.py
 ```
 
 ## Interpretation

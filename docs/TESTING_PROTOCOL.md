@@ -176,6 +176,12 @@ PR21.1f-a extends that smoke to cover mixed overall failure-mode labeling,
 source search path output, source file inventory classification, candidate
 render/GT/residual discovery, and the invariant that diagnostic hits still do
 not make drums ready for PR21.2.
+PR21.1g adds `pr211g_pr20_selected_pixel_provenance_smoke_test.py`, which
+validates PR20 selected-pixel provenance auditing with fake PR20 artifacts:
+proxy-row deduplication, flexible residual CSV schema inference,
+residual-to-selected reproduction, normal and flipped membership checks, pixel
+set hash match/non-match detection, unresolved provenance behavior, and
+observation-only / no-intervention flags.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
@@ -324,6 +330,10 @@ and `drums_ready_for_pr212 = false`. PR21.1f-a validation should also inspect
 `pr211f_drums_source_search_paths.csv`,
 `pr211f_drums_source_file_inventory.csv`, view-count summary fields, and the
 mixed overall label when raw contributors exist for only some selected views.
+PR21.1g drums validation consumes PR20 drums, PR21.1f-a drums, and PR21.1e
+drums outputs, then inspects residual CSV schema, residual-to-selected
+reproduction, membership/hash comparisons, code provenance, and final
+provenance diagnosis. Drums remains excluded from PR21.2 from provenance alone.
 PR21.2 chair-only validation consumes PR20 proxy rows and PR21.1e chair exact
 ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
 `pr212_chair_view_exact_vs_proxy.csv`,

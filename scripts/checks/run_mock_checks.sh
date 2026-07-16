@@ -49,6 +49,7 @@ python scripts/smoke/pr201_proxy_degeneracy_smoke_test.py
 python scripts/smoke/pr210_gsplat_feasibility_smoke_test.py
 python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
 python scripts/smoke/pr211f_drums_selected_pixel_alignment_smoke_test.py
+python scripts/smoke/pr211g_pr20_selected_pixel_provenance_smoke_test.py
 python scripts/smoke/pr212_chair_exact_vs_proxy_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
 

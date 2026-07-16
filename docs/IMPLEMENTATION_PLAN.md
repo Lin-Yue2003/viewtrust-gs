@@ -571,6 +571,12 @@ separated from views with no raw contributors, and source search path /
 inventory artifacts make missing residual-source evidence auditable without
 changing attribution semantics.
 
+PR21.1g traces PR20 selected-pixel provenance for drums. It checks whether
+selected pixels in `pr200_pixel_gaussian_contributions.csv` can be reproduced
+from PR20 residual CSV artifacts, membership/hash comparisons, and source-code
+provenance. It remains observation-only; provenance does not make PR20 proxy
+rows exact contributor rows or make drums ready for PR21.2.
+
 PR21.2 adds a chair-only exact-vs-proxy contributor-ID comparison. It validates
 PR21.1e chair exact contributor-ID-only evidence, compares PR20 proxy candidate
 sets against exact sets at pixel, view, and group levels, and reassesses PR20.1
