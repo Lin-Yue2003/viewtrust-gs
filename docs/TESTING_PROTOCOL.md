@@ -163,6 +163,10 @@ PR21.1d extends the same smoke with a nerfacc failure fallback: fake
 accumulation updates `render_alphas`, the next internal-loop batch observes
 `1.0 - render_alphas[..., 0]`, and recovered rows remain ID-only with no exact
 alpha/transmittance/splat-weight claims.
+PR21.1e extends the smoke with per-view replay: single-view `image_id == 0`
+produces exact ID-only rows, nonzero image IDs are rejected, multi-view image-id
+mapping is not used by default, and y-flip diagnostic hits remain audit-only
+instead of becoming exact evidence.
 
 ## Observed Command Checks
 
@@ -293,6 +297,11 @@ fields `accumulation_source_selected`, `gsplat_accumulate_*`, and
 `pure_torch_accumulate_*`. A nerfacc build failure may be present in the audit
 without blocking contributor-ID recovery if source-verified pure-torch alpha
 accumulation succeeds.
+PR21.1e validation adds inspection of `pr211_per_view_replay_audit.csv` and
+summary fields `per_view_replay_enabled`, `per_view_replay_succeeded`,
+`multi_view_image_id_mapping_used`, `per_view_selected_pixel_hit_count`, and
+`unexpected_image_id_count`. Coordinate-transform and neighborhood hits are
+diagnostic only and must not be emitted as exact rows.
 ```
 
 Command:

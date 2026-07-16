@@ -549,3 +549,12 @@ state update and selected-pixel hits. Outputs remain
 `exact_sparse_contributor_id_only`; PR21.1d does not claim exact weighted render
 contribution and does not modify training, rendering, `third_party`, installed
 gsplat, installed nerfacc, defense, or intervention behavior.
+
+PR21.1e switches exact contributor-ID recovery to per-view internal-loop replay
+to avoid ambiguous multi-view `image_id` mapping. Each selected view is replayed
+as a one-view camera batch, only `image_id == 0` is accepted, and accepted rows
+are mapped to the outer-loop view name. Coordinate flips, swaps, and
+neighborhood matches are recorded as diagnostics in
+`pr211_per_view_replay_audit.csv` but are not emitted as exact evidence.
+PR21.1e remains ID-only and observation-only, with no training, rendering,
+`third_party`, installed package, defense, or intervention changes.

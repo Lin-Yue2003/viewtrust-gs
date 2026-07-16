@@ -193,6 +193,14 @@ The fallback updates `render_alphas` only to keep the internal loop's
 transmittance state valid. It does not claim exact alpha, transmittance, splat
 weight, color, or residual-weighted contribution values.
 
+PR21.1e removes ambiguous multi-view `image_id` mapping from exact contributor
+recovery. Instead of replaying all selected views in one camera batch and
+assuming `image_id` maps to requested view order, it runs one selected view at a
+time. In each one-view replay, only `image_id == 0` is accepted as exact
+evidence and all accepted rows are mapped to the outer-loop `view_name`.
+Nonzero image IDs and coordinate-transform candidates are written to
+`pr211_per_view_replay_audit.csv` as diagnostics only.
+
 If `packed=False` is unavailable or fails, the replay records a source-validated
 packed attempt only if the shapes can be audited. It does not use proxy rows as
 exact evidence. Successful PR21.1c/PR21.1d rows are intentionally ID-only:
@@ -223,6 +231,7 @@ pr211_gsplat_source_audit.csv
 pr211_internal_loop_shape_audit.csv
 pr211_internal_loop_attempts.csv
 pr211_accumulation_audit.csv
+pr211_per_view_replay_audit.csv
 pr211_contributor_path_decision.json
 pr211_contributor_path_attempts.csv
 pr211_exact_pixel_gaussian_contributions.csv

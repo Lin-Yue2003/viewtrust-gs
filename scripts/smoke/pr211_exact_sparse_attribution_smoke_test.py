@@ -22,6 +22,7 @@ REQUIRED_OUTPUTS = [
     "pr211_internal_loop_shape_audit.csv",
     "pr211_internal_loop_attempts.csv",
     "pr211_accumulation_audit.csv",
+    "pr211_per_view_replay_audit.csv",
     "pr211_contributor_path_decision.json",
     "pr211_contributor_path_attempts.csv",
     "pr211_exact_pixel_gaussian_contributions.csv",
@@ -270,6 +271,7 @@ def main() -> int:
         _call_rasterize_to_indices_in_range_safely,
         _extract_contributors_with_gsplat_api,
         recover_contributors_by_gsplat_internal_loop,
+        recover_contributors_by_gsplat_internal_loop_per_view,
         build_pr211_exact_sparse_attribution,
     )
 
@@ -683,6 +685,130 @@ def main() -> int:
         accumulation_audit = fallback_result["accumulation_rows"]
         assert any(row["accumulation_source"] == "gsplat_accumulate" and row["succeeded"] == "false" for row in accumulation_audit)
         assert any(row["accumulation_source"] == "pure_torch_alpha_accumulate" and row["succeeded"] == "true" for row in accumulation_audit)
+
+        per_view_result = recover_contributors_by_gsplat_internal_loop_per_view(
+            replay_items=[
+                {
+                    "selected_view": {"requested_view_name": "train_004"},
+                    "rasterize_api": fake_fallback_rasterize,
+                    "accumulate_api": fake_nerfacc_accumulate,
+                    "meta": internal_meta,
+                    "colors": colors,
+                    "packed": False,
+                }
+            ],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 5,
+                    "residual_l1": 0.5,
+                }
+            ],
+            image_width=4,
+            image_height=4,
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            source_rows=source_rows,
+            batch_per_iter=1,
+            scene="chair",
+        )
+        assert per_view_result["status"]["per_view_replay_enabled"] is True
+        assert per_view_result["status"]["per_view_replay_succeeded"] is True
+        assert per_view_result["status"]["multi_view_image_id_mapping_used"] is False
+        assert per_view_result["status"]["per_view_selected_pixel_hit_count"] == 1
+        assert per_view_result["rows"]
+        assert per_view_result["per_view_rows"][0]["image_ids_seen"] == "0"
+        assert per_view_result["per_view_rows"][0]["unexpected_image_id_count"] == 0
+
+        def fake_unexpected_image_rasterize(**kwargs: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            if int(kwargs["range_start"]) > 0:
+                return np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+            return np.array([1], dtype=np.int64), np.array([5], dtype=np.int64), np.array([1], dtype=np.int64)
+
+        unexpected_result = recover_contributors_by_gsplat_internal_loop_per_view(
+            replay_items=[
+                {
+                    "selected_view": {"requested_view_name": "train_004"},
+                    "rasterize_api": fake_unexpected_image_rasterize,
+                    "accumulate_api": fake_nerfacc_accumulate,
+                    "meta": internal_meta,
+                    "colors": colors,
+                    "packed": False,
+                }
+            ],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 5,
+                    "residual_l1": 0.5,
+                }
+            ],
+            image_width=4,
+            image_height=4,
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            source_rows=source_rows,
+            batch_per_iter=1,
+            scene="chair",
+        )
+        assert not unexpected_result["rows"]
+        assert unexpected_result["status"]["unexpected_image_id_count"] == 1
+        assert unexpected_result["status"]["error"] == "unexpected_image_ids_in_single_view_replay"
+        assert unexpected_result["per_view_rows"][0]["image_ids_seen"] == "1"
+
+        def fake_y_flip_rasterize(**kwargs: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            if int(kwargs["range_start"]) > 0:
+                return np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+            return np.array([1], dtype=np.int64), np.array([9], dtype=np.int64), np.array([0], dtype=np.int64)
+
+        y_flip_result = recover_contributors_by_gsplat_internal_loop_per_view(
+            replay_items=[
+                {
+                    "selected_view": {"requested_view_name": "train_004"},
+                    "rasterize_api": fake_y_flip_rasterize,
+                    "accumulate_api": fake_nerfacc_accumulate,
+                    "meta": internal_meta,
+                    "colors": colors,
+                    "packed": False,
+                }
+            ],
+            selected_pixels=[
+                {
+                    "scene": "chair",
+                    "condition": "corrupt_occluder",
+                    "subset_name": "seed_20260710",
+                    "view_name": "train_004",
+                    "view_group": "direct_corrupted",
+                    "pixel_x": 1,
+                    "pixel_y": 1,
+                    "pixel_id": 5,
+                    "residual_l1": 0.5,
+                }
+            ],
+            image_width=4,
+            image_height=4,
+            max_contributors_per_pixel=2,
+            torch=NumpyTorch,
+            source_rows=source_rows,
+            batch_per_iter=1,
+            scene="chair",
+        )
+        assert not y_flip_result["rows"]
+        assert y_flip_result["status"]["error"] == "per_view_selected_pixel_filtering_failed"
+        assert y_flip_result["per_view_rows"][0]["selected_pixel_hit_count_normal"] == 0
+        assert y_flip_result["per_view_rows"][0]["y_flip_hit_count"] == 1
     print("pr211 exact sparse attribution smoke test ok")
     return 0
 
