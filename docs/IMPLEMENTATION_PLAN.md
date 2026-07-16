@@ -559,6 +559,12 @@ neighborhood matches are recorded as diagnostics in
 PR21.1e remains ID-only and observation-only, with no training, rendering,
 `third_party`, installed package, defense, or intervention changes.
 
+PR21.1f adds a drums selected-pixel source alignment audit. It compares PR20
+selected pixels with PR21.1e per-view replay diagnostics, audits coordinate
+convention and residual-source alignment, and keeps drums excluded from PR21.2
+unless normal coordinate-aligned exact evidence is proven. Diagnostic flip,
+swap, and neighborhood hits are never promoted to exact evidence.
+
 PR21.2 adds a chair-only exact-vs-proxy contributor-ID comparison. It validates
 PR21.1e chair exact contributor-ID-only evidence, compares PR20 proxy candidate
 sets against exact sets at pixel, view, and group levels, and reassesses PR20.1

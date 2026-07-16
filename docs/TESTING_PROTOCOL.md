@@ -167,6 +167,11 @@ PR21.1e extends the smoke with per-view replay: single-view `image_id == 0`
 produces exact ID-only rows, nonzero image IDs are rejected, multi-view image-id
 mapping is not used by default, and y-flip diagnostic hits remain audit-only
 instead of becoming exact evidence.
+PR21.1f adds `pr211f_drums_selected_pixel_alignment_smoke_test.py`, which
+validates drums selected-pixel source alignment diagnostics with fake PR20 and
+PR21.1e outputs. It checks proxy-row deduplication, coordinate-convention
+diagnostics, missing residual-source handling, no proxy-as-exact output, and
+`exact_evidence_allowed_for_drums = false` without CUDA or real `gsplat`.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
@@ -307,6 +312,11 @@ summary fields `per_view_replay_enabled`, `per_view_replay_succeeded`,
 `multi_view_image_id_mapping_used`, `per_view_selected_pixel_hit_count`, and
 `unexpected_image_id_count`. Coordinate-transform and neighborhood hits are
 diagnostic only and must not be emitted as exact rows.
+PR21.1f drums validation runs
+`run_pr211f_drums_selected_pixel_alignment_audit.py` on PR20 drums and PR21.1e
+drums outputs, then inspects coordinate-convention diagnostics, residual-source
+alignment, and the summary fields `exact_evidence_allowed_for_drums = false`
+and `drums_ready_for_pr212 = false`.
 PR21.2 chair-only validation consumes PR20 proxy rows and PR21.1e chair exact
 ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
 `pr212_chair_view_exact_vs_proxy.csv`,

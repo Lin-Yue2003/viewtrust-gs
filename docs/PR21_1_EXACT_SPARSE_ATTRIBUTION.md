@@ -214,6 +214,50 @@ ready_for_intervention = false
 Weighted alpha/transmittance/splat contribution is deferred until a later PR
 source-verifies those scalar semantics.
 
+## PR21.1f Drums Alignment Audit
+
+PR21.1f diagnoses why drums remains excluded from PR21.2. It consumes PR20
+selected-pixel proxy artifacts and PR21.1e drums per-view replay artifacts, then
+writes an offline selected-pixel source alignment audit. It may reuse
+`pr211_per_view_replay_audit.csv` for raw per-view contributor coverage and does
+not rerun training or modify gsplat.
+
+```bash
+python scripts/measure/run_pr211f_drums_selected_pixel_alignment_audit.py \
+  --run-dir "$RUN_DIR" \
+  --pr200-dir "$PR200_DRUMS_DIR" \
+  --pr211-dir "$PR211E_DRUMS_DIR" \
+  --pr210-dir "$PR210A_DRUMS_DIR" \
+  --scene drums \
+  --condition corrupt_occluder \
+  --subset-name seed_20260710 \
+  --views train_004 train_009 train_012 train_017 train_007 train_013 \
+  --output-dir "$PR211F_DRUMS_DIR" \
+  --device cuda:0 \
+  --top-pixels-per-view 128 \
+  --max-contributors-per-pixel 16 \
+  --write-markdown
+```
+
+The PR21.1f outputs are:
+
+```text
+pr211f_drums_selected_pixel_alignment_summary.json
+pr211f_drums_pr20_selected_pixel_audit.csv
+pr211f_drums_exact_replay_raw_pixel_coverage.csv
+pr211f_drums_coordinate_convention_audit.csv
+pr211f_drums_residual_source_alignment_audit.csv
+pr211f_drums_top_residual_crosscheck.csv
+pr211f_drums_alignment_diagnosis.csv
+pr211f_drums_selected_pixel_alignment_report.md
+artifact_manifest.csv
+```
+
+Flip, swap, and neighborhood hits are diagnostic-only. PR21.1f does not emit
+exact contributor rows, does not use PR20 proxy rows as exact rows, and keeps
+`exact_evidence_allowed_for_drums = false` unless a future PR proves normal
+coordinate-aligned exact evidence.
+
 ## Outputs
 
 PR21.1 writes:
@@ -260,6 +304,7 @@ and artifact manifests:
 
 ```bash
 python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
+python scripts/smoke/pr211f_drums_selected_pixel_alignment_smoke_test.py
 ```
 
 ## Interpretation
