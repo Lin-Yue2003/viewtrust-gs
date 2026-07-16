@@ -558,3 +558,11 @@ neighborhood matches are recorded as diagnostics in
 `pr211_per_view_replay_audit.csv` but are not emitted as exact evidence.
 PR21.1e remains ID-only and observation-only, with no training, rendering,
 `third_party`, installed package, defense, or intervention changes.
+
+PR21.2 adds a chair-only exact-vs-proxy contributor-ID comparison. It validates
+PR21.1e chair exact contributor-ID-only evidence, compares PR20 proxy candidate
+sets against exact sets at pixel, view, and group levels, and reassesses PR20.1
+proxy degeneracy claims without treating proxy rows as exact evidence. Drums is
+explicitly excluded until coordinate alignment is resolved. PR21.2 remains
+observation-only and does not provide exact alpha/transmittance/splat weights or
+any intervention mechanism.

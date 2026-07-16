@@ -167,6 +167,11 @@ PR21.1e extends the smoke with per-view replay: single-view `image_id == 0`
 produces exact ID-only rows, nonzero image IDs are rejected, multi-view image-id
 mapping is not used by default, and y-flip diagnostic hits remain audit-only
 instead of becoming exact evidence.
+PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
+chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
+metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
+observation-only / no-intervention flags with tiny fake PR20 and PR21.1e
+outputs.
 
 ## Observed Command Checks
 
@@ -302,6 +307,12 @@ summary fields `per_view_replay_enabled`, `per_view_replay_succeeded`,
 `multi_view_image_id_mapping_used`, `per_view_selected_pixel_hit_count`, and
 `unexpected_image_id_count`. Coordinate-transform and neighborhood hits are
 diagnostic only and must not be emitted as exact rows.
+PR21.2 chair-only validation consumes PR20 proxy rows and PR21.1e chair exact
+ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
+`pr212_chair_view_exact_vs_proxy.csv`,
+`pr212_chair_group_exact_overlap.csv`, and
+`pr212_chair_proxy_degeneracy_reassessment.csv`. Drums must remain excluded
+until coordinate alignment is resolved.
 ```
 
 Command:
