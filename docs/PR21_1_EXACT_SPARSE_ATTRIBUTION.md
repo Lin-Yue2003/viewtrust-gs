@@ -318,6 +318,30 @@ Even if PR20 selected-pixel provenance is verified, drums remains excluded from
 PR21.2 unless PR21 exact replay also validates normal-coordinate selected-pixel
 hits. PR20 proxy rows are not exact contributor rows.
 
+## PR21.3 Chair Exact Evidence Positioning
+
+PR21.3 returns to the chair-only exact-evidence line and writes a
+research-facing interpretation package. It summarizes what PR20/PR20.1 proxy
+evidence claimed, what PR21.1e made possible, what PR21.2 found, and which
+paper-safe claims are supported. The positioning is deliberately conservative:
+ViewTrust-GS is framed as exact contributor attribution and trust-signal
+validation, not as a defense or intervention method.
+
+PR21.3 writes:
+
+```text
+pr213_chair_exact_evidence_positioning_summary.json
+pr213_chair_claim_table.csv
+pr213_chair_limitation_table.csv
+pr213_chair_exact_evidence_positioning_report.md
+pr213_paper_wording_snippets.md
+pr213_next_step_decision_memo.md
+artifact_manifest.csv
+```
+
+The recommended next step is PR21.2a ID namespace audit first, then PR21.4
+exact contribution magnitude if the namespace is validated.
+
 ## Outputs
 
 PR21.1 writes:
@@ -366,6 +390,7 @@ and artifact manifests:
 python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
 python scripts/smoke/pr211f_drums_selected_pixel_alignment_smoke_test.py
 python scripts/smoke/pr211g_pr20_selected_pixel_provenance_smoke_test.py
+python scripts/smoke/pr213_chair_exact_evidence_positioning_smoke_test.py
 ```
 
 ## Interpretation

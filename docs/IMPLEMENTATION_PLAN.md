@@ -584,3 +584,9 @@ proxy degeneracy claims without treating proxy rows as exact evidence. Drums is
 explicitly excluded until coordinate alignment is resolved. PR21.2 remains
 observation-only and does not provide exact alpha/transmittance/splat weights or
 any intervention mechanism.
+
+PR21.3 adds a chair-only exact-evidence interpretation and positioning package.
+It turns PR21.1e/PR21.2 evidence into claim tables, limitation tables,
+research-facing wording, and a next-step memo. It frames ViewTrust-GS as exact
+contributor attribution and trust-signal validation rather than a defense, and
+recommends PR21.2a ID namespace audit before PR21.4 contribution magnitude.

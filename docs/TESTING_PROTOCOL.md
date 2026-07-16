@@ -187,6 +187,10 @@ chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
 observation-only / no-intervention flags with tiny fake PR20 and PR21.1e
 outputs.
+PR21.3 adds `pr213_chair_exact_evidence_positioning_smoke_test.py`, which
+validates the chair-only interpretation package: observation-only flags,
+zero-overlap exact-vs-proxy interpretation, conservative claim/limitation
+tables, paper wording snippets, and no intervention-ready claims.
 
 ## Observed Command Checks
 
@@ -340,6 +344,12 @@ ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
 `pr212_chair_group_exact_overlap.csv`, and
 `pr212_chair_proxy_degeneracy_reassessment.csv`. Drums must remain excluded
 until coordinate alignment is resolved.
+PR21.3 chair validation consumes PR21.1e chair, PR21.2 chair, PR20 chair, and
+optional PR20.1/drums context directories, then inspects
+`pr213_chair_claim_table.csv`, `pr213_chair_limitation_table.csv`,
+`pr213_paper_wording_snippets.md`, and
+`pr213_next_step_decision_memo.md`. It must remain interpretation-only and not
+intervention-ready.
 ```
 
 Command:
