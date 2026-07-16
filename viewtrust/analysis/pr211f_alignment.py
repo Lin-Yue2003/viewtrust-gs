@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import statistics
+import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +23,8 @@ OUTPUT_FILES = [
     "pr211f_drums_residual_source_alignment_audit.csv",
     "pr211f_drums_top_residual_crosscheck.csv",
     "pr211f_drums_alignment_diagnosis.csv",
+    "pr211f_drums_source_search_paths.csv",
+    "pr211f_drums_source_file_inventory.csv",
     "pr211f_drums_selected_pixel_alignment_report.md",
     "artifact_manifest.csv",
 ]
@@ -83,14 +85,27 @@ RESIDUAL_SOURCE_FIELDS = [
     "pr20_residual_path",
     "pr21_render_path",
     "pr21_gt_path",
+    "run_render_path",
+    "dataset_gt_path",
     "pr20_render_shape",
     "pr20_gt_shape",
     "pr20_residual_shape",
     "pr21_render_shape",
     "pr21_gt_shape",
+    "run_render_shape",
+    "dataset_gt_shape",
     "render_shape_match",
     "gt_shape_match",
     "residual_shape_match",
+    "pr20_render_candidate_count",
+    "pr20_gt_candidate_count",
+    "pr20_residual_candidate_count",
+    "pr21_render_candidate_count",
+    "pr21_gt_candidate_count",
+    "run_render_candidate_count",
+    "dataset_gt_candidate_count",
+    "source_discovery_status",
+    "source_discovery_notes",
     "selected_pixels_high_residual_normal",
     "selected_pixels_high_residual_y_flip",
     "selected_pixels_high_residual_x_flip",
@@ -138,6 +153,59 @@ DIAGNOSIS_FIELDS = [
 MANIFEST_FIELDS = ["relative_path", "path", "exists", "file_type", "size_bytes", "required", "artifact_group"]
 
 CONVENTIONS = ["normal", "y_flip", "x_flip", "xy_swap", "xy_swap_y_flip", "xy_swap_x_flip", "neighborhood_r1", "neighborhood_r2", "neighborhood_r4", "neighborhood_r8"]
+
+SOURCE_SEARCH_PATH_FIELDS = [
+    "source_root_name",
+    "source_root_path",
+    "exists",
+    "file_count_total",
+    "candidate_file_count",
+    "render_candidate_count",
+    "gt_candidate_count",
+    "residual_candidate_count",
+    "selected_pixel_candidate_count",
+    "config_candidate_count",
+    "notes",
+]
+
+SOURCE_INVENTORY_FIELDS = [
+    "scene",
+    "source_root_name",
+    "source_root_path",
+    "relative_path",
+    "filename",
+    "extension",
+    "file_size_bytes",
+    "matched_view_name",
+    "matched_category",
+    "image_shape_if_loadable",
+    "array_shape_if_loadable",
+    "load_status",
+    "notes",
+]
+
+SOURCE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".npy", ".npz", ".pt", ".pth", ".json", ".csv", ".txt", ".md"}
+SOURCE_SEARCH_TERMS = {
+    "render",
+    "renders",
+    "rgb",
+    "image",
+    "images",
+    "gt",
+    "ground",
+    "truth",
+    "target",
+    "residual",
+    "residuals",
+    "error",
+    "l1",
+    "diff",
+    "heatmap",
+    "overlay",
+    "selected",
+    "pixel",
+    "pixels",
+}
 
 
 def _utc_now() -> str:
@@ -349,6 +417,204 @@ def _read_image(path: Path | None) -> np.ndarray | None:
         return None
 
 
+def _array_shape(path: Path | None) -> tuple[str, str]:
+    if path is None or not path.is_file():
+        return "", "missing"
+    suffix = path.suffix.lower()
+    if suffix in {".pt", ".pth"}:
+        return "", "not_loaded_torch_file"
+    if suffix not in {".npy", ".npz"}:
+        return "", "not_array_file"
+    try:
+        if suffix == ".npy":
+            array = np.load(path, mmap_mode="r")
+            return str(tuple(array.shape)), "loaded"
+        data = np.load(path)
+        shapes = {key: tuple(data[key].shape) for key in data.files[:8]}
+        return str(shapes), "loaded"
+    except Exception as exc:
+        return "", f"array_load_failed:{type(exc).__name__}"
+
+
+def _image_shape_status(path: Path | None) -> tuple[str, str]:
+    if path is None or not path.is_file():
+        return "", "missing"
+    if path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+        return "", "not_image_file"
+    shape = _shape(path)
+    return shape, "loaded" if shape else "image_load_failed"
+
+
+def _source_roots(run_dir: Path, pr200_dir: Path, pr211_dir: Path, pr210_dir: Path | None, scene: str) -> list[tuple[str, Path]]:
+    roots = [("pr20", pr200_dir), ("pr211", pr211_dir)]
+    if pr210_dir:
+        roots.append(("pr210", pr210_dir))
+    roots.append(("run_dir", run_dir))
+    data_root = os.environ.get("VIEWTRUST_DATA_ROOT")
+    if data_root:
+        root = Path(data_root)
+        roots.extend(
+            [
+                ("dataset_viewtrust_mini", root / "viewtrust-mini" / "nerf_synthetic" / scene),
+                ("dataset_raw", root / "raw" / "nerf_synthetic" / scene),
+            ]
+        )
+    seen: set[Path] = set()
+    unique = []
+    for name, path in roots:
+        resolved = path.resolve() if path.exists() else path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append((name, path))
+    return unique
+
+
+def _matched_view_name(path_text: str, views: list[str]) -> str:
+    lowered = path_text.lower()
+    for view in views:
+        if view.lower() in lowered:
+            return view
+    for view in views:
+        suffix = view.split("_")[-1]
+        if suffix and suffix in lowered:
+            return view
+    return ""
+
+
+def _source_category(path_text: str) -> str:
+    lowered = path_text.lower()
+    if any(term in lowered for term in ["residual", "residuals", "error", "l1", "diff", "heatmap", "overlay"]):
+        return "residual_candidate"
+    if any(term in lowered for term in ["ground", "truth", "target", "gt"]):
+        return "gt_candidate"
+    if any(term in lowered for term in ["render", "renders", "rgb", "image", "images"]):
+        return "render_candidate"
+    if any(term in lowered for term in ["selected", "pixel", "pixels"]):
+        return "selected_pixel_candidate"
+    if any(term in lowered for term in ["config", "camera", "transform"]):
+        return "config_candidate"
+    if any(term in lowered for term in ["audit", "summary", "report"]):
+        return "audit_candidate"
+    return "unknown_candidate"
+
+
+def _candidate_score(row: dict[str, Any], views: list[str]) -> tuple[int, int, int, str]:
+    category = str(row.get("matched_category", ""))
+    view = str(row.get("matched_view_name", ""))
+    category_score = {
+        "render_candidate": 0,
+        "gt_candidate": 1,
+        "residual_candidate": 2,
+        "selected_pixel_candidate": 3,
+        "config_candidate": 4,
+        "audit_candidate": 5,
+        "unknown_candidate": 6,
+    }.get(category, 9)
+    view_score = views.index(view) if view in views else len(views)
+    size_score = -_safe_int(row.get("file_size_bytes"))
+    return category_score, view_score, size_score, str(row.get("relative_path", ""))
+
+
+def _discover_source_files(
+    *,
+    scene: str,
+    run_dir: Path,
+    pr200_dir: Path,
+    pr211_dir: Path,
+    pr210_dir: Path | None,
+    views: list[str],
+    max_inventory_rows: int = 2000,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    search_rows = []
+    inventory_rows = []
+    roots = _source_roots(run_dir, pr200_dir, pr211_dir, pr210_dir, scene)
+    view_terms = set(views) | {view.split("_")[-1] for view in views}
+    search_terms = SOURCE_SEARCH_TERMS | view_terms
+    for root_name, root in roots:
+        file_count = 0
+        candidate_rows: list[dict[str, Any]] = []
+        category_counts: dict[str, int] = defaultdict(int)
+        if root.exists():
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                file_count += 1
+                suffix = path.suffix.lower()
+                rel = path.relative_to(root)
+                rel_text = str(rel)
+                lowered = rel_text.lower()
+                if suffix not in SOURCE_EXTENSIONS or not any(term in lowered for term in search_terms):
+                    continue
+                category = _source_category(lowered)
+                image_shape, image_status = _image_shape_status(path)
+                array_shape, array_status = _array_shape(path)
+                if image_status == "loaded":
+                    load_status = image_status
+                elif array_status == "loaded":
+                    load_status = array_status
+                elif image_status not in {"not_image_file", "missing"}:
+                    load_status = image_status
+                elif array_status not in {"not_array_file", "missing"}:
+                    load_status = array_status
+                else:
+                    load_status = "metadata_only"
+                row = {
+                    "scene": scene,
+                    "source_root_name": root_name,
+                    "source_root_path": str(root),
+                    "relative_path": rel_text,
+                    "filename": path.name,
+                    "extension": suffix,
+                    "file_size_bytes": path.stat().st_size,
+                    "matched_view_name": _matched_view_name(rel_text, views),
+                    "matched_category": category,
+                    "image_shape_if_loadable": image_shape,
+                    "array_shape_if_loadable": array_shape,
+                    "load_status": load_status,
+                    "notes": "recursive candidate discovery; candidate status does not verify source correctness",
+                }
+                category_counts[category] += 1
+                candidate_rows.append(row)
+        candidate_rows = sorted(candidate_rows, key=lambda row: _candidate_score(row, views))
+        inventory_rows.extend(candidate_rows[:max(0, max_inventory_rows - len(inventory_rows))])
+        search_rows.append(
+            {
+                "source_root_name": root_name,
+                "source_root_path": str(root),
+                "exists": _bool_text(root.exists()),
+                "file_count_total": file_count,
+                "candidate_file_count": len(candidate_rows),
+                "render_candidate_count": category_counts["render_candidate"],
+                "gt_candidate_count": category_counts["gt_candidate"],
+                "residual_candidate_count": category_counts["residual_candidate"],
+                "selected_pixel_candidate_count": category_counts["selected_pixel_candidate"],
+                "config_candidate_count": category_counts["config_candidate"],
+                "notes": "inventory may be capped" if len(candidate_rows) > max_inventory_rows else "",
+            }
+        )
+    return search_rows, inventory_rows
+
+
+def _candidate_path(row: dict[str, Any] | None) -> Path | None:
+    if not row:
+        return None
+    return Path(str(row["source_root_path"])) / str(row["relative_path"])
+
+
+def _best_source_candidate(inventory: list[dict[str, Any]], root_names: set[str], category: str, view: str) -> tuple[Path | None, int, dict[str, Any] | None]:
+    candidates = [
+        row
+        for row in inventory
+        if row.get("source_root_name") in root_names
+        and row.get("matched_category") == category
+        and row.get("matched_view_name") in {view, ""}
+    ]
+    candidates = sorted(candidates, key=lambda row: (0 if row.get("matched_view_name") == view else 1, str(row.get("relative_path", ""))))
+    row = candidates[0] if candidates else None
+    return _candidate_path(row), len(candidates), row
+
+
 def _find_image(root: Path, view: str, hints: list[str]) -> Path | None:
     if not root.exists():
         return None
@@ -385,27 +651,58 @@ def _best_overlap(selected: set[tuple[int, int]], top_pixels: set[tuple[int, int
     return best, counts.get(best, 0), counts
 
 
-def _source_alignment(scene: str, run_dir: Path, pr200_dir: Path, views: list[str], selected: dict[str, set[tuple[int, int]]], top_k: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _source_alignment(
+    scene: str,
+    run_dir: Path,
+    pr200_dir: Path,
+    views: list[str],
+    selected: dict[str, set[tuple[int, int]]],
+    top_k: int,
+    inventory_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     residual_rows = []
     top_rows = []
     for view in views:
-        pr20_render = _find_image(pr200_dir, view, ["render"])
-        pr20_gt = _find_image(pr200_dir, view, ["gt"])
-        pr20_residual = _find_image(pr200_dir, view, ["residual", "heatmap"])
-        pr21_render = _find_image(run_dir, view, ["renders", "render"])
-        pr21_gt = _find_image(run_dir, view, ["gt"])
+        pr20_render, pr20_render_count, _ = _best_source_candidate(inventory_rows, {"pr20"}, "render_candidate", view)
+        pr20_gt, pr20_gt_count, _ = _best_source_candidate(inventory_rows, {"pr20"}, "gt_candidate", view)
+        pr20_residual, pr20_residual_count, _ = _best_source_candidate(inventory_rows, {"pr20"}, "residual_candidate", view)
+        pr21_render, pr21_render_count, _ = _best_source_candidate(inventory_rows, {"pr211"}, "render_candidate", view)
+        pr21_gt, pr21_gt_count, _ = _best_source_candidate(inventory_rows, {"pr211"}, "gt_candidate", view)
+        run_render, run_render_count, _ = _best_source_candidate(inventory_rows, {"run_dir"}, "render_candidate", view)
+        dataset_gt, dataset_gt_count, _ = _best_source_candidate(inventory_rows, {"dataset_viewtrust_mini", "dataset_raw"}, "gt_candidate", view)
+        if pr20_render is None:
+            pr20_render = _find_image(pr200_dir, view, ["render"])
+        if pr20_gt is None:
+            pr20_gt = _find_image(pr200_dir, view, ["gt"])
+        if pr20_residual is None:
+            pr20_residual = _find_image(pr200_dir, view, ["residual", "heatmap"])
         pr20_render_shape = _shape(pr20_render)
         pr20_gt_shape = _shape(pr20_gt)
         pr20_residual_shape = _shape(pr20_residual)
         pr21_render_shape = _shape(pr21_render)
         pr21_gt_shape = _shape(pr21_gt)
+        run_render_shape = _shape(run_render)
+        dataset_gt_shape = _shape(dataset_gt)
         render = _read_image(pr20_render)
         if render is None:
             render = _read_image(pr21_render)
+        if render is None:
+            render = _read_image(run_render)
         gt = _read_image(pr20_gt)
         if gt is None:
             gt = _read_image(pr21_gt)
+        if gt is None:
+            gt = _read_image(dataset_gt)
         residual_available = render is not None and gt is not None and render.shape == gt.shape
+        candidate_count = (
+            pr20_render_count
+            + pr20_gt_count
+            + pr20_residual_count
+            + pr21_render_count
+            + pr21_gt_count
+            + run_render_count
+            + dataset_gt_count
+        )
         best_convention = ""
         best_score: int | str = ""
         top_counts = {key: 0 for key in ["normal", "y_flip", "x_flip", "xy_swap", "xy_swap_y_flip", "xy_swap_x_flip"]}
@@ -420,8 +717,16 @@ def _source_alignment(scene: str, run_dir: Path, pr200_dir: Path, views: list[st
             notes.append(f"pr20_render_sha256_1mb={_checksum(pr20_render)}")
         if pr21_render:
             notes.append(f"pr21_render_sha256_1mb={_checksum(pr21_render)}")
+        if run_render:
+            notes.append(f"run_render_sha256_1mb={_checksum(run_render)}")
         if not residual_available:
-            notes.append("residual source unavailable or render/gt shapes differ")
+            notes.append("residual source unavailable, source not verified, or render/gt shapes differ")
+        if residual_available:
+            source_status = "residual_reconstructed_from_candidates"
+        elif candidate_count > 0:
+            source_status = "candidates_found_source_not_verified"
+        else:
+            source_status = "no_source_candidates_found"
         residual_rows.append(
             {
                 "scene": scene,
@@ -431,14 +736,27 @@ def _source_alignment(scene: str, run_dir: Path, pr200_dir: Path, views: list[st
                 "pr20_residual_path": str(pr20_residual or ""),
                 "pr21_render_path": str(pr21_render or ""),
                 "pr21_gt_path": str(pr21_gt or ""),
+                "run_render_path": str(run_render or ""),
+                "dataset_gt_path": str(dataset_gt or ""),
                 "pr20_render_shape": pr20_render_shape,
                 "pr20_gt_shape": pr20_gt_shape,
                 "pr20_residual_shape": pr20_residual_shape,
                 "pr21_render_shape": pr21_render_shape,
                 "pr21_gt_shape": pr21_gt_shape,
+                "run_render_shape": run_render_shape,
+                "dataset_gt_shape": dataset_gt_shape,
                 "render_shape_match": _bool_text(bool(pr20_render_shape and pr21_render_shape and pr20_render_shape == pr21_render_shape)),
                 "gt_shape_match": _bool_text(bool(pr20_gt_shape and pr21_gt_shape and pr20_gt_shape == pr21_gt_shape)),
                 "residual_shape_match": _bool_text(bool(pr20_residual_shape and pr20_render_shape and pr20_residual_shape[:8] == pr20_render_shape[:8])),
+                "pr20_render_candidate_count": pr20_render_count,
+                "pr20_gt_candidate_count": pr20_gt_count,
+                "pr20_residual_candidate_count": pr20_residual_count,
+                "pr21_render_candidate_count": pr21_render_count,
+                "pr21_gt_candidate_count": pr21_gt_count,
+                "run_render_candidate_count": run_render_count,
+                "dataset_gt_candidate_count": dataset_gt_count,
+                "source_discovery_status": source_status,
+                "source_discovery_notes": "candidate paths are not source verification",
                 "selected_pixels_high_residual_normal": top_counts["normal"],
                 "selected_pixels_high_residual_y_flip": top_counts["y_flip"],
                 "selected_pixels_high_residual_x_flip": top_counts["x_flip"],
@@ -464,6 +782,8 @@ def _source_alignment(scene: str, run_dir: Path, pr200_dir: Path, views: list[st
                 "best_overlap_convention": best_convention or "unavailable",
                 "best_overlap_count": best_score if best_score != "" else 0,
                 "interpretation": "residual_source_unavailable"
+                if not residual_available and candidate_count == 0
+                else "source_candidates_found_but_residual_not_reconstructable"
                 if not residual_available
                 else f"pr20_selected_pixels_match_reconstructed_residual_{best_convention}"
                 if best_score
@@ -483,6 +803,10 @@ def _diagnosis(scene: str, views: list[str], coord_rows: list[dict[str, Any]], r
     best_totals: dict[str, int] = defaultdict(int)
     normal_total = 0
     raw_total = 0
+    views_with_raw = []
+    views_without_raw = []
+    views_with_normal_hits = []
+    views_with_diagnostic_hits = []
     for view in views:
         raw = raw_by_view.get(view, {})
         coord = coord_by_view.get(view, [])
@@ -496,21 +820,26 @@ def _diagnosis(scene: str, views: list[str], coord_rows: list[dict[str, Any]], r
         normal_total += normal_hits
         raw_count = _safe_int(raw.get("raw_contributor_rows_before_filter"))
         raw_total += raw_count
+        if raw_count > 0:
+            views_with_raw.append(view)
+        else:
+            views_without_raw.append(view)
+        if normal_hits > 0:
+            views_with_normal_hits.append(view)
+        if best_hits > 0:
+            views_with_diagnostic_hits.append(view)
         residual = residual_by_view.get(view, {})
         top = top_by_view.get(view, {})
         residual_available = _truth(top.get("reconstructed_residual_available"))
         if raw_count == 0:
-            failure = "exact_replay_has_no_raw_contributors"
+            failure = "exact_replay_has_no_raw_contributors_for_view"
             fix = "inspect_pr21_replay_for_view"
         elif normal_hits > 0:
-            failure = "normal_hits_require_validation"
+            failure = "normal_coordinate_hits_available_requires_validation"
             fix = "validate_coordinate_convention_before_exact_rows"
-        elif best_hits > 0 and "flip" in best_name:
-            failure = "selected_pixel_coordinate_flip_candidate"
-            fix = "validate_coordinate_convention_before_exact_rows"
-        elif best_hits > 0 and "swap" in best_name:
-            failure = "selected_pixel_xy_swap_candidate"
-            fix = "validate_coordinate_convention_before_exact_rows"
+        elif best_hits > 0:
+            failure = "selected_pixel_coordinate_convention_candidate"
+            fix = "validate_coordinate_convention_or_regenerate_selected_pixels_from_verified_residual_source"
         elif residual_available and not top.get("normal_overlap_count"):
             failure = "residual_source_mismatch"
             fix = "regenerate_pr20_selected_pixels_from_same_render_gt_used_by_pr21"
@@ -540,7 +869,30 @@ def _diagnosis(scene: str, views: list[str], coord_rows: list[dict[str, Any]], r
             }
         )
     best_overall = max(best_totals, key=lambda key: best_totals[key]) if best_totals else ""
-    return out, {"normal_total": normal_total, "raw_total": raw_total, "best_overall": best_overall, "best_total": best_totals.get(best_overall, 0)}
+    best_total = best_totals.get(best_overall, 0)
+    if views_with_raw and views_without_raw and normal_total == 0 and best_total > 0:
+        likely_overall = "mixed_coordinate_candidate_and_no_raw_contributors"
+    elif not views_with_raw:
+        likely_overall = "exact_replay_has_no_raw_contributors"
+    elif raw_total > 0 and normal_total == 0 and best_total > 0:
+        likely_overall = "selected_pixel_coordinate_convention_candidate"
+    elif raw_total > 0 and normal_total == 0 and best_total == 0:
+        likely_overall = "selected_pixels_outside_exact_support_or_source_mismatch"
+    elif normal_total > 0:
+        likely_overall = "normal_coordinate_hits_available_requires_validation"
+    else:
+        likely_overall = "insufficient_source_files_to_decide"
+    return out, {
+        "normal_total": normal_total,
+        "raw_total": raw_total,
+        "best_overall": best_overall,
+        "best_total": best_total,
+        "likely_overall": likely_overall,
+        "views_with_raw_contributors": views_with_raw,
+        "views_without_raw_contributors": views_without_raw,
+        "views_with_normal_hits": views_with_normal_hits,
+        "views_with_diagnostic_hits": views_with_diagnostic_hits,
+    }
 
 
 def _manifest_rows(output_dir: Path, run_dir: Path, pr200_dir: Path, pr211_dir: Path, pr210_dir: Path | None) -> list[dict[str, Any]]:
@@ -565,6 +917,7 @@ def _manifest_rows(output_dir: Path, run_dir: Path, pr200_dir: Path, pr211_dir: 
 
 
 def _write_report(path: Path, summary: dict[str, Any]) -> None:
+    source_status = str(summary.get("source_discovery_status", ""))
     lines = [
         "# PR21.1f Drums Selected-Pixel Alignment Audit",
         "",
@@ -582,7 +935,20 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
         f"- Normal exact hits: `{summary.get('normal_exact_hit_total')}`",
         f"- Best diagnostic convention: `{summary.get('best_diagnostic_convention_overall')}`",
         f"- Likely failure mode: `{summary.get('likely_failure_mode_overall')}`",
+        f"- Views with raw contributors: `{summary.get('views_with_raw_contributors')}`",
+        f"- Views without raw contributors: `{summary.get('views_without_raw_contributors')}`",
+        f"- Views with diagnostic hits: `{summary.get('views_with_diagnostic_hits')}`",
         f"- Drums ready for PR21.2: `{summary.get('drums_ready_for_pr212')}`",
+        "",
+        "## Source Discovery",
+        f"- Source discovery status: `{source_status}`",
+        f"- Source inventory file count: `{summary.get('source_inventory_file_count')}`",
+        f"- Source candidate file count: `{summary.get('source_candidate_file_count')}`",
+        f"- Search paths written: `{summary.get('source_search_paths_written')}`",
+        f"- Source inventory written: `{summary.get('source_inventory_written')}`",
+        f"- Residual source alignment available: `{summary.get('residual_source_alignment_available')}`",
+        "",
+        "Candidate paths are discovery evidence only. They do not verify that a render, GT, or residual file is the exact source used to select PR20 pixels.",
         "",
         "## Recommended Next Step",
         str(summary.get("recommended_next_step", "")),
@@ -615,14 +981,30 @@ def build_pr211f_drums_alignment_audit(
     selected_audit = _selected_pixel_audit(scene, pr200_dir, views, selected, rows_by_view)
     raw_rows, raw_by_view = _raw_coverage(scene, pr211_dir, views)
     coord_rows = _coordinate_audit(scene, views, selected, raw_by_view)
-    residual_rows, top_rows = _source_alignment(scene, run_dir, pr200_dir, views, selected, top_pixels_per_view)
+    source_search_rows, source_inventory_rows = _discover_source_files(
+        scene=scene,
+        run_dir=run_dir,
+        pr200_dir=pr200_dir,
+        pr211_dir=pr211_dir,
+        pr210_dir=pr210_dir,
+        views=views,
+    )
+    residual_rows, top_rows = _source_alignment(scene, run_dir, pr200_dir, views, selected, top_pixels_per_view, source_inventory_rows)
     diagnosis_rows, totals = _diagnosis(scene, views, coord_rows, raw_by_view, residual_rows, top_rows)
 
-    likely_modes = [row["likely_failure_mode"] for row in diagnosis_rows]
-    likely_overall = statistics.mode(likely_modes) if likely_modes else "insufficient_source_files_to_decide"
     residual_available = any(_truth(row.get("reconstructed_residual_available")) for row in top_rows)
     selected_total = sum(len(selected.get(view, set())) for view in views)
     exact_allowed = False
+    source_candidate_count = sum(_safe_int(row.get("candidate_file_count")) for row in source_search_rows)
+    render_candidate_count = sum(_safe_int(row.get("render_candidate_count")) for row in source_search_rows)
+    gt_candidate_count = sum(_safe_int(row.get("gt_candidate_count")) for row in source_search_rows)
+    residual_candidate_count = sum(_safe_int(row.get("residual_candidate_count")) for row in source_search_rows)
+    if residual_available:
+        source_discovery_status = "residual_reconstruction_available"
+    elif source_candidate_count > 0:
+        source_discovery_status = "candidates_found_source_not_verified"
+    else:
+        source_discovery_status = "no_source_candidates_found"
     summary = {
         "schema_name": "viewtrust.pr211f.drums_selected_pixel_alignment.summary",
         "schema_version": 1,
@@ -647,7 +1029,22 @@ def build_pr211f_drums_alignment_audit(
         "best_diagnostic_convention_overall": totals["best_overall"],
         "best_diagnostic_hit_total": totals["best_total"],
         "residual_source_alignment_available": residual_available,
-        "likely_failure_mode_overall": likely_overall,
+        "likely_failure_mode_overall": totals["likely_overall"],
+        "view_count_with_raw_contributors": len(totals["views_with_raw_contributors"]),
+        "view_count_without_raw_contributors": len(totals["views_without_raw_contributors"]),
+        "view_count_with_normal_hits": len(totals["views_with_normal_hits"]),
+        "view_count_with_diagnostic_hits": len(totals["views_with_diagnostic_hits"]),
+        "views_with_raw_contributors": ";".join(totals["views_with_raw_contributors"]),
+        "views_without_raw_contributors": ";".join(totals["views_without_raw_contributors"]),
+        "views_with_diagnostic_hits": ";".join(totals["views_with_diagnostic_hits"]),
+        "source_inventory_file_count": len(source_inventory_rows),
+        "source_candidate_file_count": source_candidate_count,
+        "source_render_candidate_count": render_candidate_count,
+        "source_gt_candidate_count": gt_candidate_count,
+        "source_residual_candidate_count": residual_candidate_count,
+        "source_discovery_status": source_discovery_status,
+        "source_search_paths_written": True,
+        "source_inventory_written": True,
         "exact_evidence_allowed_for_drums": exact_allowed,
         "drums_ready_for_pr212": False,
         "recommended_next_step": "Validate coordinate convention or regenerate PR20 selected pixels from the same render/GT source before using drums in PR21.2.",
@@ -660,6 +1057,8 @@ def build_pr211f_drums_alignment_audit(
     write_csv_rows(output_dir / "pr211f_drums_residual_source_alignment_audit.csv", residual_rows, RESIDUAL_SOURCE_FIELDS)
     write_csv_rows(output_dir / "pr211f_drums_top_residual_crosscheck.csv", top_rows, TOP_RESIDUAL_FIELDS)
     write_csv_rows(output_dir / "pr211f_drums_alignment_diagnosis.csv", diagnosis_rows, DIAGNOSIS_FIELDS)
+    write_csv_rows(output_dir / "pr211f_drums_source_search_paths.csv", source_search_rows, SOURCE_SEARCH_PATH_FIELDS)
+    write_csv_rows(output_dir / "pr211f_drums_source_file_inventory.csv", source_inventory_rows, SOURCE_INVENTORY_FIELDS)
     _write_report(output_dir / "pr211f_drums_selected_pixel_alignment_report.md", summary)
     manifest = output_dir / "artifact_manifest.csv"
     write_csv_rows(manifest, _manifest_rows(output_dir, run_dir, pr200_dir, pr211_dir, pr210_dir), MANIFEST_FIELDS)

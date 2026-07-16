@@ -172,6 +172,10 @@ validates drums selected-pixel source alignment diagnostics with fake PR20 and
 PR21.1e outputs. It checks proxy-row deduplication, coordinate-convention
 diagnostics, missing residual-source handling, no proxy-as-exact output, and
 `exact_evidence_allowed_for_drums = false` without CUDA or real `gsplat`.
+PR21.1f-a extends that smoke to cover mixed overall failure-mode labeling,
+source search path output, source file inventory classification, candidate
+render/GT/residual discovery, and the invariant that diagnostic hits still do
+not make drums ready for PR21.2.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
@@ -316,7 +320,10 @@ PR21.1f drums validation runs
 `run_pr211f_drums_selected_pixel_alignment_audit.py` on PR20 drums and PR21.1e
 drums outputs, then inspects coordinate-convention diagnostics, residual-source
 alignment, and the summary fields `exact_evidence_allowed_for_drums = false`
-and `drums_ready_for_pr212 = false`.
+and `drums_ready_for_pr212 = false`. PR21.1f-a validation should also inspect
+`pr211f_drums_source_search_paths.csv`,
+`pr211f_drums_source_file_inventory.csv`, view-count summary fields, and the
+mixed overall label when raw contributors exist for only some selected views.
 PR21.2 chair-only validation consumes PR20 proxy rows and PR21.1e chair exact
 ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
 `pr212_chair_view_exact_vs_proxy.csv`,

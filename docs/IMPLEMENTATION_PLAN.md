@@ -565,6 +565,12 @@ convention and residual-source alignment, and keeps drums excluded from PR21.2
 unless normal coordinate-aligned exact evidence is proven. Diagnostic flip,
 swap, and neighborhood hits are never promoted to exact evidence.
 
+PR21.1f-a fixes drums alignment summary labeling and strengthens source
+discovery. Mixed views with raw contributors plus diagnostic non-normal hits are
+separated from views with no raw contributors, and source search path /
+inventory artifacts make missing residual-source evidence auditable without
+changing attribution semantics.
+
 PR21.2 adds a chair-only exact-vs-proxy contributor-ID comparison. It validates
 PR21.1e chair exact contributor-ID-only evidence, compares PR20 proxy candidate
 sets against exact sets at pixel, view, and group levels, and reassesses PR20.1

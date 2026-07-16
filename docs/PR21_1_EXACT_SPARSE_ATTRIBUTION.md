@@ -249,6 +249,8 @@ pr211f_drums_coordinate_convention_audit.csv
 pr211f_drums_residual_source_alignment_audit.csv
 pr211f_drums_top_residual_crosscheck.csv
 pr211f_drums_alignment_diagnosis.csv
+pr211f_drums_source_search_paths.csv
+pr211f_drums_source_file_inventory.csv
 pr211f_drums_selected_pixel_alignment_report.md
 artifact_manifest.csv
 ```
@@ -257,6 +259,20 @@ Flip, swap, and neighborhood hits are diagnostic-only. PR21.1f does not emit
 exact contributor rows, does not use PR20 proxy rows as exact rows, and keeps
 `exact_evidence_allowed_for_drums = false` unless a future PR proves normal
 coordinate-aligned exact evidence.
+
+PR21.1f-a strengthens the drums diagnosis. If some selected views have raw
+contributors and non-normal diagnostic hits while other selected views have no
+raw contributors, the summary reports
+`likely_failure_mode_overall = mixed_coordinate_candidate_and_no_raw_contributors`
+instead of reducing the whole run to `exact_replay_has_no_raw_contributors`.
+The summary also records the views with raw contributors, without raw
+contributors, with normal hits, and with diagnostic hits.
+
+PR21.1f-a also writes a source discovery audit. `pr211f_drums_source_search_paths.csv`
+lists every searched root and candidate counts, while
+`pr211f_drums_source_file_inventory.csv` lists likely render, GT, residual,
+selected-pixel, config, and audit candidates. Candidate paths are discovery
+evidence only; they do not verify that a file is the exact PR20 residual source.
 
 ## Outputs
 
