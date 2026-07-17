@@ -202,6 +202,11 @@ source tracing, absent-source vs filtered-row failure modes, coordinate/type
 format diagnostics, corrected preview generation without fabricating proxy
 rows, covered-scope wording under partial coverage, and observation-only /
 no-intervention flags.
+PR21.2d adds `pr212d_exact_pixel_anchored_proxy_repair_smoke_test.py`, which
+validates exact-pixel anchor construction, PR20 proxy extraction only on anchor
+pixels, verified lifecycle mapping audits, unmapped and out-of-range mapping
+rejection, complete zero-overlap and nonzero-overlap comparisons, partial
+coverage safety downgrades, and observation-only / no-intervention flags.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and

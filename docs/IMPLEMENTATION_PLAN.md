@@ -620,3 +620,11 @@ rows, PR21.2b repaired preview rows, PR21.2c comparison rows, and coordinate /
 type-format checks, then writes a corrected comparison preview and claim-scope
 recommendation. It does not overwrite PR21.2c, fabricate proxy rows, change
 scoring, or modify training/rendering/third_party behavior.
+
+PR21.2d builds an exact-pixel-anchored PR20 proxy repair export by extracting
+PR20 original proxy rows directly on the PR21.1e exact pixel anchor and mapping
+their raw proxy IDs through the verified lifecycle final-index table. It writes
+complete repaired pixel/view/group comparisons, mapping audits, PR21.2c-vs-PR21.2d
+deltas, claim status, paper wording, and a next-step memo. It remains
+observation-only and does not overwrite PR20, PR21.2b, PR21.2c, or PR21.2c-fix
+outputs.
