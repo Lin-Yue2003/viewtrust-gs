@@ -372,6 +372,39 @@ Even if the common namespace is supported, PR21.2a remains observation-only.
 It can make the chair zero-overlap wording safer within exact-available
 pixels/views, but `proxy_safe_for_intervention` remains `false`.
 
+## PR21.2b PR20 Proxy ID Source Audit
+
+PR21.2b audits why PR20 proxy `gaussian_id` values may not match the final
+checkpoint compact index namespace. It inventories identity/lifecycle mapping
+sources, looks up suspicious IDs such as train013 `100000..100016`, tests
+whether an explicit mapping to final checkpoint indices exists, and reports
+whether a repaired exact-vs-proxy preview is feasible.
+
+PR21.2b writes:
+
+```text
+pr212b_pr20_proxy_id_source_audit_summary.json
+pr212b_pr20_proxy_id_profile.csv
+pr212b_identity_mapping_inventory.csv
+pr212b_proxy_id_lookup_across_identity_sources.csv
+pr212b_pr20_id_semantics_diagnosis.csv
+pr212b_mapping_candidate_table.csv
+pr212b_repair_feasibility_summary.csv
+pr212b_pr20_proxy_repaired_preview.csv
+pr212b_repaired_exact_vs_proxy_preview.csv
+pr212b_code_proxy_id_source_audit.csv
+pr212b_code_proxy_id_source_summary.json
+pr212b_pr20_proxy_id_source_audit_report.md
+pr212b_proxy_namespace_wording.md
+pr212b_next_step_decision_memo.md
+artifact_manifest.csv
+```
+
+PR21.2b does not overwrite PR20, PR21.2, or PR21.2a outputs. If no explicit
+mapping exists, PR20 proxy evidence remains diagnostic-only and should be
+re-exported with verified final checkpoint indices before paper-facing numeric
+comparison.
+
 ## Outputs
 
 PR21.1 writes:
@@ -421,6 +454,7 @@ python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
 python scripts/smoke/pr211f_drums_selected_pixel_alignment_smoke_test.py
 python scripts/smoke/pr211g_pr20_selected_pixel_provenance_smoke_test.py
 python scripts/smoke/pr212a_chair_id_namespace_audit_smoke_test.py
+python scripts/smoke/pr212b_pr20_proxy_id_source_audit_smoke_test.py
 python scripts/smoke/pr213_chair_exact_evidence_positioning_smoke_test.py
 ```
 

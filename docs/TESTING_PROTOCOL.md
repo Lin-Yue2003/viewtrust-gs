@@ -186,6 +186,11 @@ PR21.2a adds `pr212a_chair_id_namespace_audit_smoke_test.py`, which validates
 PLY vertex-count parsing, ID range audits, zero-based global namespace checks,
 rank-like proxy ID detection, same-pixel zero-overlap comparison, unsupported
 namespace downgrading, and no-intervention safety flags.
+PR21.2b adds `pr212b_pr20_proxy_id_source_audit_smoke_test.py`, which validates
+PR20 proxy ID source profiling, train013 100000-pattern detection,
+identity/lifecycle mapping inventory, explicit ID lookup, repair feasibility
+failure without mapping, repair feasibility success with explicit mapping,
+repaired preview output, and no-intervention safety flags.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
@@ -347,6 +352,11 @@ PR21.3 chair, and the chair run checkpoint, then inspects checkpoint Gaussian
 count, ID range audits, proxy semantics, same-pixel namespace comparisons, code
 provenance, and final namespace diagnosis. Proxy IDs remain unsafe for
 intervention even if the common namespace is supported.
+PR21.2b chair validation consumes PR20/PR21.1e/PR21.2/PR21.2a/PR21.3 chair
+outputs plus the chair run directory, then inspects proxy ID profile,
+identity/lifecycle mapping inventory, suspicious ID lookup, mapping candidates,
+repair feasibility, repaired preview, and code provenance. PR21.4 remains
+blocked unless the proxy namespace is explicitly repaired and validated.
 PR21.2 chair-only validation consumes PR20 proxy rows and PR21.1e chair exact
 ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
 `pr212_chair_view_exact_vs_proxy.csv`,

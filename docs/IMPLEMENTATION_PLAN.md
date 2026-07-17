@@ -597,3 +597,11 @@ Gaussian count, ID ranges, same-pixel exact/proxy IDs, local-rank-like proxy
 patterns, and code provenance. The audit can strengthen the chair zero-overlap
 claim within exact-available pixels/views, but it remains observation-only and
 keeps proxy IDs unsafe for intervention.
+
+PR21.2b audits the source of PR20 proxy IDs and whether they can be repaired
+into verified final checkpoint compact indices. It inventories identity and
+lifecycle mapping sources, flags suspicious out-of-range IDs such as train013
+`100000..100016`, tests explicit mapping candidates, and writes repair
+feasibility / repaired-preview artifacts. It does not overwrite PR20 outputs or
+make proxy evidence exact; PR21.4 remains blocked unless namespace repair is
+verified.
