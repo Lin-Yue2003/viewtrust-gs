@@ -613,3 +613,10 @@ overwriting PR21.2 or changing attribution semantics. PR21.2c remains
 observation-only: proxy IDs stay unsafe for intervention, exact contribution
 magnitudes remain unavailable, drums is not used as exact evidence, and no
 training, rendering, third_party, defense, or gating behavior changes.
+
+PR21.2c-fix diagnoses missing repaired-proxy rows for chair exact pixels after
+the repaired comparison. It traces missing pixels through PR20 original proxy
+rows, PR21.2b repaired preview rows, PR21.2c comparison rows, and coordinate /
+type-format checks, then writes a corrected comparison preview and claim-scope
+recommendation. It does not overwrite PR21.2c, fabricate proxy rows, change
+scoring, or modify training/rendering/third_party behavior.

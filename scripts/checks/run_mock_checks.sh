@@ -53,6 +53,7 @@ python scripts/smoke/pr211g_pr20_selected_pixel_provenance_smoke_test.py
 python scripts/smoke/pr212a_chair_id_namespace_audit_smoke_test.py
 python scripts/smoke/pr212b_pr20_proxy_id_source_audit_smoke_test.py
 python scripts/smoke/pr212c_repaired_exact_vs_proxy_smoke_test.py
+python scripts/smoke/pr212c_fix_missing_repaired_proxy_pixels_smoke_test.py
 python scripts/smoke/pr212_chair_exact_vs_proxy_smoke_test.py
 python scripts/smoke/pr213_chair_exact_evidence_positioning_smoke_test.py
 python scripts/data/install_datasets.py --manifest configs/datasets.example.json --data-root ./data
