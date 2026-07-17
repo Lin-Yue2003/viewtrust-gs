@@ -605,3 +605,11 @@ lifecycle mapping sources, flags suspicious out-of-range IDs such as train013
 feasibility / repaired-preview artifacts. It does not overwrite PR20 outputs or
 make proxy evidence exact; PR21.4 remains blocked unless namespace repair is
 verified.
+
+PR21.2c recomputes the chair exact-vs-proxy comparison using the PR21.2b
+verified final checkpoint Gaussian indices. It writes repaired pixel, view,
+group, delta, degeneracy, claim-status, wording, and decision artifacts without
+overwriting PR21.2 or changing attribution semantics. PR21.2c remains
+observation-only: proxy IDs stay unsafe for intervention, exact contribution
+magnitudes remain unavailable, drums is not used as exact evidence, and no
+training, rendering, third_party, defense, or gating behavior changes.

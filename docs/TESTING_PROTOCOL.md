@@ -191,6 +191,11 @@ PR20 proxy ID source profiling, train013 100000-pattern detection,
 identity/lifecycle mapping inventory, explicit ID lookup, repair feasibility
 failure without mapping, repair feasibility success with explicit mapping,
 repaired preview output, and no-intervention safety flags.
+PR21.2c adds `pr212c_repaired_exact_vs_proxy_smoke_test.py`, which validates
+the repaired chair exact-vs-proxy comparison after PR21.2b namespace mapping:
+zero-overlap preservation, nonzero-overlap detection, partial repaired proxy
+coverage handling, original-vs-repaired delta labeling, no-intervention safety
+flags, no exact contribution magnitude claims, and no drums-as-exact evidence.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
