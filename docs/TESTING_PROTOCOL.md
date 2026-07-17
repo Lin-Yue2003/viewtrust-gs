@@ -182,6 +182,10 @@ proxy-row deduplication, flexible residual CSV schema inference,
 residual-to-selected reproduction, normal and flipped membership checks, pixel
 set hash match/non-match detection, unresolved provenance behavior, and
 observation-only / no-intervention flags.
+PR21.2a adds `pr212a_chair_id_namespace_audit_smoke_test.py`, which validates
+PLY vertex-count parsing, ID range audits, zero-based global namespace checks,
+rank-like proxy ID detection, same-pixel zero-overlap comparison, unsupported
+namespace downgrading, and no-intervention safety flags.
 PR21.2 adds `pr212_chair_exact_vs_proxy_smoke_test.py`, which validates
 chair-only exact input gating, pixel/view/group exact-vs-proxy contributor-ID
 metrics, proxy-degeneracy reassessment, no proxy-as-exact fallback, and
@@ -338,6 +342,11 @@ PR21.1g drums validation consumes PR20 drums, PR21.1f-a drums, and PR21.1e
 drums outputs, then inspects residual CSV schema, residual-to-selected
 reproduction, membership/hash comparisons, code provenance, and final
 provenance diagnosis. Drums remains excluded from PR21.2 from provenance alone.
+PR21.2a chair validation consumes PR20 chair, PR21.1e chair, PR21.2 chair,
+PR21.3 chair, and the chair run checkpoint, then inspects checkpoint Gaussian
+count, ID range audits, proxy semantics, same-pixel namespace comparisons, code
+provenance, and final namespace diagnosis. Proxy IDs remain unsafe for
+intervention even if the common namespace is supported.
 PR21.2 chair-only validation consumes PR20 proxy rows and PR21.1e chair exact
 ID-only rows to inspect `pr212_chair_pixel_exact_vs_proxy.csv`,
 `pr212_chair_view_exact_vs_proxy.csv`,

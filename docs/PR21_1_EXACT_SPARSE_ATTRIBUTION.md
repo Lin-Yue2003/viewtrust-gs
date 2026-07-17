@@ -342,6 +342,36 @@ artifact_manifest.csv
 The recommended next step is PR21.2a ID namespace audit first, then PR21.4
 exact contribution magnitude if the namespace is validated.
 
+## PR21.2a Chair ID Namespace Audit
+
+PR21.2a verifies whether PR20 proxy `gaussian_id` values and PR21 exact
+`gaussian_id` values refer to the same global checkpoint Gaussian index
+namespace. This audit is required before using PR21.2 zero-overlap as a
+paper-facing claim.
+
+PR21.2a writes:
+
+```text
+pr212a_chair_id_namespace_audit_summary.json
+pr212a_checkpoint_gaussian_inventory.csv
+pr212a_id_source_schema_audit.csv
+pr212a_id_range_audit.csv
+pr212a_same_pixel_id_namespace_comparison.csv
+pr212a_sample_id_lookup.csv
+pr212a_proxy_id_semantics_audit.csv
+pr212a_code_id_semantics_audit.csv
+pr212a_code_id_semantics_summary.json
+pr212a_id_namespace_diagnosis.csv
+pr212a_chair_id_namespace_audit_report.md
+pr212a_zero_overlap_namespace_wording.md
+pr212a_next_step_decision_memo.md
+artifact_manifest.csv
+```
+
+Even if the common namespace is supported, PR21.2a remains observation-only.
+It can make the chair zero-overlap wording safer within exact-available
+pixels/views, but `proxy_safe_for_intervention` remains `false`.
+
 ## Outputs
 
 PR21.1 writes:
@@ -390,6 +420,7 @@ and artifact manifests:
 python scripts/smoke/pr211_exact_sparse_attribution_smoke_test.py
 python scripts/smoke/pr211f_drums_selected_pixel_alignment_smoke_test.py
 python scripts/smoke/pr211g_pr20_selected_pixel_provenance_smoke_test.py
+python scripts/smoke/pr212a_chair_id_namespace_audit_smoke_test.py
 python scripts/smoke/pr213_chair_exact_evidence_positioning_smoke_test.py
 ```
 

@@ -590,3 +590,10 @@ It turns PR21.1e/PR21.2 evidence into claim tables, limitation tables,
 research-facing wording, and a next-step memo. It frames ViewTrust-GS as exact
 contributor attribution and trust-signal validation rather than a defense, and
 recommends PR21.2a ID namespace audit before PR21.4 contribution magnitude.
+
+PR21.2a audits whether PR20 proxy Gaussian IDs and PR21 exact contributor IDs
+share the same global checkpoint Gaussian index namespace. It checks checkpoint
+Gaussian count, ID ranges, same-pixel exact/proxy IDs, local-rank-like proxy
+patterns, and code provenance. The audit can strengthen the chair zero-overlap
+claim within exact-available pixels/views, but it remains observation-only and
+keeps proxy IDs unsafe for intervention.
